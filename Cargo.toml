@@ -1,0 +1,25 @@
+[package]
+license = "GPL-3.0-or-later"
+name = "metadata-shortener"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+blake3 = {version = "1.5.0", default-features = false}
+frame-metadata = {version = "16.0.0", default-features = false, features = ["current", "decode"]}
+merkle-cbt = {version = "0.3.2", default-features = false}
+parity-scale-codec = {version = "3.6.4", default-features = false, features = ["derive", "bit-vec"]}
+scale-info = {version = "2.9.0", default-features = false}
+substrate_parser = {git = "https://github.com/Alzymologist/substrate-parser", default-features = false, features = ["embed-display"]}
+
+[dev-dependencies]
+hex = "0.4.3"
+primitive-types = "0.12.1"
+
+[features]
+default = ["std"]
+std = []
+
+[lib]
+name = "metadata_shortener"
+crate-type = ["lib"]
