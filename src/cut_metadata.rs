@@ -465,21 +465,36 @@ where
 #[derive(Debug, Decode, Encode)]
 pub struct ShortMetadata {
     pub short_registry: ShortRegistry,
-    pub extrinsic: ExtrinsicMetadata<PortableForm>,
-    pub spec_name_version: SpecNameVersion, // restore later to set of chain name, encoded chain version, and chain version ty
-    pub base58prefix: u16, // could be in `System` pallet of metadata; add later checking that input matches;
-    pub decimals: u8,
-    pub unit: String,
     pub indices: Vec<u32>,
     pub lemmas: Vec<[u8; 32]>,
+    pub metadata_descriptor: MetadataDescriptor,
+}
+
+#[derive(Debug, Decode, Encode)]
+pub enum MetadataDescriptor {
+    V0 {
+        extrinsic: ExtrinsicMetadata<PortableForm>,
+        spec_name_version: SpecNameVersion, // restore later to set of chain name, encoded chain version, and chain version ty
+        base58prefix: u16, // could be in `System` pallet of metadata; add later checking that input matches;
+        decimals: u8,
+        unit: String,
+    },
 }
 
 impl ShortMetadata {
     pub fn to_specs(&self) -> ShortSpecs {
-        ShortSpecs {
-            base58prefix: self.base58prefix,
-            decimals: self.decimals,
-            unit: self.unit.to_owned(),
+        match &self.metadata_descriptor {
+            MetadataDescriptor::V0 {
+                extrinsic: _,
+                spec_name_version: _,
+                base58prefix,
+                decimals,
+                unit,
+            } => ShortSpecs {
+                base58prefix: *base58prefix,
+                decimals: *decimals,
+                unit: unit.to_owned(),
+            },
         }
     }
 }
@@ -519,8 +534,7 @@ where
     let proof = CBMT::<[u8; 32], MergeHashes>::build_merkle_proof(&leaves_long, &indices)
         .ok_or(MetaCutError::TreeCalculateProof)?;
 
-    Ok(ShortMetadata {
-        short_registry,
+    let metadata_descriptor = MetadataDescriptor::V0 {
         extrinsic: meta_v14.extrinsic(),
         spec_name_version: meta_v14
             .spec_name_version()
@@ -528,8 +542,13 @@ where
         base58prefix: short_specs.base58prefix,
         decimals: short_specs.decimals,
         unit: short_specs.unit.to_owned(),
+    };
+
+    Ok(ShortMetadata {
+        short_registry,
         indices: proof.indices().to_owned(),
         lemmas: proof.lemmas().to_owned(),
+        metadata_descriptor,
     })
 }
 
@@ -580,8 +599,7 @@ where
     let proof = CBMT::<[u8; 32], MergeHashes>::build_merkle_proof(&leaves_long, &indices)
         .ok_or(MetaCutError::TreeCalculateProof)?;
 
-    Ok(ShortMetadata {
-        short_registry,
+    let metadata_descriptor = MetadataDescriptor::V0 {
         extrinsic: meta_v14.extrinsic(),
         spec_name_version: meta_v14
             .spec_name_version()
@@ -589,8 +607,13 @@ where
         base58prefix: short_specs.base58prefix,
         decimals: short_specs.decimals,
         unit: short_specs.unit.to_owned(),
+    };
+
+    Ok(ShortMetadata {
+        short_registry,
         indices: proof.indices().to_owned(),
         lemmas: proof.lemmas().to_owned(),
+        metadata_descriptor,
     })
 }
 

@@ -5,11 +5,13 @@ use crate::std::{
 use frame_metadata::v14::RuntimeMetadataV14;
 use parity_scale_codec::Decode;
 use primitive_types::H256;
-use substrate_parser::{parse_transaction, parse_transaction_unmarked, ShortSpecs};
+use substrate_parser::{parse_transaction, parse_transaction_unmarked, AsMetadata, ShortSpecs};
 
 use crate::{
-    cut_metadata::{cut_metadata, cut_metadata_transaction_unmarked, ShortMetadata},
-    traits::HashableMetadata,
+    cut_metadata::{
+        cut_metadata, cut_metadata_transaction_unmarked, MetadataDescriptor, ShortMetadata,
+    },
+    traits::{ExtendedMetadata, HashableMetadata},
 };
 
 fn metadata(filename: &str) -> RuntimeMetadataV14 {
@@ -55,9 +57,10 @@ fn short_metadata_1_decode() {
     let data = hex::decode("4d0210020806000046ebddef8cd9bb167dc30878d7113b7e168e6f0646beffd77d69d39bad76b47a07001b2c3ef70006050c0008264834504a64ace1373f0c8ed5d57381ddf54a2f67a318fa42b1352681606d00aebb0211dbb07b4d335a657257b8ac5e53794c901e4f616d4a254f2490c43934009ae581fef1fc06828723715731adcf810e42ce4dadad629b1b7fa5c3c144a81d550008009723000007000000e143f23803ac50e8f6f8e62695d1ce9e4e1d68aa36c1cd2cfd15340213f3423e5b1d91c89d3de85a4d6eee76ecf3a303cf38b59e7d81522eb7cd24b02eb161ff").unwrap();
 
     let metadata_westend = metadata("for_tests/westend9111");
+    let specs_westend = specs_westend();
 
     let short_metadata =
-        cut_metadata(&data.as_ref(), &mut (), &metadata_westend, &specs_westend()).unwrap();
+        cut_metadata(&data.as_ref(), &mut (), &metadata_westend, &specs_westend).unwrap();
 
     let root_short_metadata =
         <ShortMetadata as HashableMetadata<()>>::types_merkle_root(&short_metadata).unwrap();
@@ -65,6 +68,27 @@ fn short_metadata_1_decode() {
         <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(&metadata_westend).unwrap();
 
     assert_eq!(root_short_metadata, root_full_metadata);
+
+    let digest_short_metadata =
+        <ShortMetadata as ExtendedMetadata<()>>::digest(&short_metadata).unwrap();
+    let descriptor_full_metadata = MetadataDescriptor::V0 {
+        extrinsic: <RuntimeMetadataV14 as AsMetadata<()>>::extrinsic(&metadata_westend),
+        spec_name_version: <RuntimeMetadataV14 as AsMetadata<()>>::spec_name_version(
+            &metadata_westend,
+        )
+        .unwrap(),
+        base58prefix: specs_westend.base58prefix,
+        decimals: specs_westend.decimals,
+        unit: specs_westend.unit,
+    };
+    let digest_full_metadata =
+        <RuntimeMetadataV14 as HashableMetadata<()>>::digest_with_descriptor(
+            &metadata_westend,
+            &descriptor_full_metadata,
+        )
+        .unwrap();
+
+    assert_eq!(digest_short_metadata, digest_full_metadata);
 
     let reply = parse_transaction(
         &data.as_ref(),
@@ -80,7 +104,9 @@ fn short_metadata_1_decode() {
     .unwrap()
     .card(
         &short_metadata.to_specs(),
-        &short_metadata.spec_name_version.spec_name,
+        &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
+            .unwrap()
+            .spec_name,
     );
 
     let call_printed = format!(
@@ -175,7 +201,9 @@ fn short_metadata_2_decode() {
     .unwrap()
     .card(
         &short_metadata.to_specs(),
-        &short_metadata.spec_name_version.spec_name,
+        &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
+            .unwrap()
+            .spec_name,
     );
 
     let call_printed = format!(
@@ -258,7 +286,9 @@ fn short_metadata_3_decode() {
     .unwrap()
     .card(
         &short_metadata.to_specs(),
-        &short_metadata.spec_name_version.spec_name,
+        &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
+            .unwrap()
+            .spec_name,
     );
 
     let call_printed = format!(
@@ -351,7 +381,9 @@ fn short_metadata_4_decode() {
     .unwrap()
     .card(
         &short_metadata.to_specs(),
-        &short_metadata.spec_name_version.spec_name,
+        &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
+            .unwrap()
+            .spec_name,
     );
 
     let call_printed = format!(
@@ -603,7 +635,9 @@ fn short_metadata_5_decode() {
     .unwrap()
     .card(
         &short_metadata.to_specs(),
-        &short_metadata.spec_name_version.spec_name,
+        &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
+            .unwrap()
+            .spec_name,
     );
 
     let call_printed = format!(
