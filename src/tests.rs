@@ -52,6 +52,38 @@ fn specs_polkadot() -> ShortSpecs {
     }
 }
 
+fn compare_registry_hashes(short_metadata: &ShortMetadata, full_metadata: &RuntimeMetadataV14) {
+    let root_short_metadata =
+        <ShortMetadata as HashableMetadata<()>>::types_merkle_root(short_metadata).unwrap();
+    let root_full_metadata =
+        <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(full_metadata).unwrap();
+    assert_eq!(root_short_metadata, root_full_metadata);
+}
+
+fn compare_digests(
+    short_metadata: &ShortMetadata,
+    full_metadata: &RuntimeMetadataV14,
+    specs: ShortSpecs,
+) {
+    let digest_short_metadata =
+        <ShortMetadata as ExtendedMetadata<()>>::digest(short_metadata).unwrap();
+    let descriptor_full_metadata = MetadataDescriptor::V0 {
+        extrinsic: <RuntimeMetadataV14 as AsMetadata<()>>::extrinsic(full_metadata),
+        spec_name_version: <RuntimeMetadataV14 as AsMetadata<()>>::spec_name_version(full_metadata)
+            .unwrap(),
+        base58prefix: specs.base58prefix,
+        decimals: specs.decimals,
+        unit: specs.unit,
+    };
+    let digest_full_metadata =
+        <RuntimeMetadataV14 as HashableMetadata<()>>::digest_with_descriptor(
+            full_metadata,
+            &descriptor_full_metadata,
+        )
+        .unwrap();
+    assert_eq!(digest_short_metadata, digest_full_metadata);
+}
+
 #[test]
 fn short_metadata_1_decode() {
     let data = hex::decode("4d0210020806000046ebddef8cd9bb167dc30878d7113b7e168e6f0646beffd77d69d39bad76b47a07001b2c3ef70006050c0008264834504a64ace1373f0c8ed5d57381ddf54a2f67a318fa42b1352681606d00aebb0211dbb07b4d335a657257b8ac5e53794c901e4f616d4a254f2490c43934009ae581fef1fc06828723715731adcf810e42ce4dadad629b1b7fa5c3c144a81d550008009723000007000000e143f23803ac50e8f6f8e62695d1ce9e4e1d68aa36c1cd2cfd15340213f3423e5b1d91c89d3de85a4d6eee76ecf3a303cf38b59e7d81522eb7cd24b02eb161ff").unwrap();
@@ -62,33 +94,8 @@ fn short_metadata_1_decode() {
     let short_metadata =
         cut_metadata(&data.as_ref(), &mut (), &metadata_westend, &specs_westend).unwrap();
 
-    let root_short_metadata =
-        <ShortMetadata as HashableMetadata<()>>::types_merkle_root(&short_metadata).unwrap();
-    let root_full_metadata =
-        <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(&metadata_westend).unwrap();
-
-    assert_eq!(root_short_metadata, root_full_metadata);
-
-    let digest_short_metadata =
-        <ShortMetadata as ExtendedMetadata<()>>::digest(&short_metadata).unwrap();
-    let descriptor_full_metadata = MetadataDescriptor::V0 {
-        extrinsic: <RuntimeMetadataV14 as AsMetadata<()>>::extrinsic(&metadata_westend),
-        spec_name_version: <RuntimeMetadataV14 as AsMetadata<()>>::spec_name_version(
-            &metadata_westend,
-        )
-        .unwrap(),
-        base58prefix: specs_westend.base58prefix,
-        decimals: specs_westend.decimals,
-        unit: specs_westend.unit,
-    };
-    let digest_full_metadata =
-        <RuntimeMetadataV14 as HashableMetadata<()>>::digest_with_descriptor(
-            &metadata_westend,
-            &descriptor_full_metadata,
-        )
-        .unwrap();
-
-    assert_eq!(digest_short_metadata, digest_full_metadata);
+    compare_registry_hashes(&short_metadata, &metadata_westend);
+    compare_digests(&short_metadata, &metadata_westend, specs_westend);
 
     let reply = parse_transaction(
         &data.as_ref(),
@@ -176,16 +183,13 @@ fn short_metadata_2_decode() {
     let data = hex::decode("a00a0304a84b841c4d9d1a179be03bb31131c14ebf6ce22233158139ae28a3dfaac5fe1560a5e9e05cd5038d248ed73e0d9808000003000000fc41b9bd8ef8fe53d58c7ea67c794c7ec9a73daf05e6d54b14ff6342c99ba64cfc41b9bd8ef8fe53d58c7ea67c794c7ec9a73daf05e6d54b14ff6342c99ba64c").unwrap();
 
     let metadata_acala = metadata("for_tests/acala2200");
+    let specs_acala = specs_acala();
 
     let short_metadata =
-        cut_metadata(&data.as_ref(), &mut (), &metadata_acala, &specs_acala()).unwrap();
+        cut_metadata(&data.as_ref(), &mut (), &metadata_acala, &specs_acala).unwrap();
 
-    let root_short_metadata =
-        <ShortMetadata as HashableMetadata<()>>::types_merkle_root(&short_metadata).unwrap();
-    let root_full_metadata =
-        <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(&metadata_acala).unwrap();
-
-    assert_eq!(root_short_metadata, root_full_metadata);
+    compare_registry_hashes(&short_metadata, &metadata_acala);
+    compare_digests(&short_metadata, &metadata_acala, specs_acala);
 
     let reply = parse_transaction(
         &data.as_ref(),
@@ -255,22 +259,13 @@ fn short_metadata_3_decode() {
     let data = hex::decode("641a04100000083434000008383800000c31333200000c313736d503040b63ce64c10c05d62400001800000091b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c391b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3").unwrap();
 
     let metadata_polkadot = metadata("for_tests/polkadot9430");
+    let specs_polkadot = specs_polkadot();
 
-    let short_metadata = cut_metadata(
-        &data.as_ref(),
-        &mut (),
-        &metadata_polkadot,
-        &specs_polkadot(),
-    )
-    .unwrap();
+    let short_metadata =
+        cut_metadata(&data.as_ref(), &mut (), &metadata_polkadot, &specs_polkadot).unwrap();
 
-    let root_short_metadata =
-        <ShortMetadata as HashableMetadata<()>>::types_merkle_root(&short_metadata).unwrap();
-    let root_full_metadata =
-        <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(&metadata_polkadot)
-            .unwrap();
-
-    assert_eq!(root_short_metadata, root_full_metadata);
+    compare_registry_hashes(&short_metadata, &metadata_polkadot);
+    compare_digests(&short_metadata, &metadata_polkadot, specs_polkadot);
 
     let reply = parse_transaction(
         &data.as_ref(),
@@ -350,22 +345,18 @@ fn short_metadata_4_decode() {
     let data = hex::decode("6301039508080401380074063d03aeada02cc26977d0ab68927e12516a3287a3c72cc937981d1e7c9ade0cf91f0300eda947e425ea94b7642cc2d3939d30207e457a92049804580804044e7eca0311ba0594016808003d3d080701ada1020180d1043985798860eb63723790bda41de487e0730251717471e9660ab0aa5a6a65dde70807042c021673020808049d604a87138c0704aa060102ab90ebe5eeaf95088767ace3e78d04147180b016cf193a542fe5c9a4291e70784f6d64fb705349e4a361c453b28d18ba43b8e0bee72dad92845acbe281f21ea6c270f553481dc183b60ca8c1803544f33691adef9c5d4f807827e288143f4af2aa1c2c0b9e6087db1decedb85e2774f792c9bbc61ed85f031d11d175f93ecf7d030800a90307010107d5ebd78dfce4bdb789c0e310e2172b3f3a13ec09e39ba8b644e368816bd7acd57f10030025867d9fc900c0f7afe1ce1fc756f152b3f38e5a010001dec102c8abb0449d91dd617be6a7dc4d7ea0ae7f7cebaf1c9e4c9f0a64716c3d007800000000d50391010b63ce64c10c05d62400001800000091b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c391b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3").unwrap();
 
     let metadata_polkadot = metadata("for_tests/polkadot9430");
+    let specs_polkadot = specs_polkadot();
 
     let short_metadata = cut_metadata_transaction_unmarked(
         &data.as_ref(),
         &mut (),
         &metadata_polkadot,
-        &specs_polkadot(),
+        &specs_polkadot,
     )
     .unwrap();
 
-    let root_short_metadata =
-        <ShortMetadata as HashableMetadata<()>>::types_merkle_root(&short_metadata).unwrap();
-    let root_full_metadata =
-        <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(&metadata_polkadot)
-            .unwrap();
-
-    assert_eq!(root_short_metadata, root_full_metadata);
+    compare_registry_hashes(&short_metadata, &metadata_polkadot);
+    compare_digests(&short_metadata, &metadata_polkadot, specs_polkadot);
 
     let reply = parse_transaction_unmarked(
         &data.as_ref(),
@@ -609,17 +600,14 @@ fn short_metadata_5_decode() {
     let data = hex::decode("1f00001b7a61c73f450f4518731981d9cdd99013cfe044294617b74f93ba4bba6090d00b63ce64c10c05d5030403d202964942000000020000009eb76c5184c4ab8679d2d5d819fdf90b9c001403e9e17da2e14b6d8aec4029c69eb76c5184c4ab8679d2d5d819fdf90b9c001403e9e17da2e14b6d8aec4029c6").unwrap();
 
     let metadata_astar = metadata("for_tests/astar66");
+    let specs_astar = specs_astar();
 
     let short_metadata =
-        cut_metadata_transaction_unmarked(&data.as_ref(), &mut (), &metadata_astar, &specs_astar())
+        cut_metadata_transaction_unmarked(&data.as_ref(), &mut (), &metadata_astar, &specs_astar)
             .unwrap();
 
-    let root_short_metadata =
-        <ShortMetadata as HashableMetadata<()>>::types_merkle_root(&short_metadata).unwrap();
-    let root_full_metadata =
-        <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(&metadata_astar).unwrap();
-
-    assert_eq!(root_short_metadata, root_full_metadata);
+    compare_registry_hashes(&short_metadata, &metadata_astar);
+    compare_digests(&short_metadata, &metadata_astar, specs_astar);
 
     let reply = parse_transaction_unmarked(
         &data.as_ref(),
