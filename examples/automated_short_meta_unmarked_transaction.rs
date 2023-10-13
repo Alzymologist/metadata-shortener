@@ -2,13 +2,13 @@
 use frame_metadata::v14::RuntimeMetadataV14;
 #[cfg(feature = "std")]
 use metadata_shortener::{
-    cut_metadata::{cut_metadata_transaction_unmarked, ShortMetadata},
-    traits::HashableMetadata,
+    cut_metadata::{cut_metadata_transaction_unmarked, MetadataDescriptor, ShortMetadata},
+    traits::{ExtendedMetadata, HashableMetadata},
 };
 #[cfg(feature = "std")]
 use parity_scale_codec::{Decode, Encode};
 #[cfg(feature = "std")]
-use substrate_parser::ShortSpecs;
+use substrate_parser::{traits::AsMetadata, ShortSpecs};
 
 #[cfg(feature = "std")]
 fn main() {
@@ -45,6 +45,27 @@ fn main() {
 
     // Roots are equal.
     assert_eq!(root_short_metadata, root_full_metadata);
+
+    // Calculate digests for short metadata and full metadata. Specs mixed in.
+    let digest_short_metadata =
+        <ShortMetadata as ExtendedMetadata<()>>::digest(&short_metadata).unwrap();
+    let descriptor_full_metadata = MetadataDescriptor::V0 {
+        extrinsic: <RuntimeMetadataV14 as AsMetadata<()>>::extrinsic(&meta_v14),
+        spec_name_version: <RuntimeMetadataV14 as AsMetadata<()>>::spec_name_version(&meta_v14)
+            .unwrap(),
+        base58prefix: specs_westend.base58prefix,
+        decimals: specs_westend.decimals,
+        unit: specs_westend.unit,
+    };
+    let digest_full_metadata =
+        <RuntimeMetadataV14 as HashableMetadata<()>>::digest_with_descriptor(
+            &meta_v14,
+            &descriptor_full_metadata,
+        )
+        .unwrap();
+
+    // Digests are equal.
+    assert_eq!(digest_short_metadata, digest_full_metadata);
 }
 
 #[cfg(not(feature = "std"))]

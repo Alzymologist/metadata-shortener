@@ -11,7 +11,7 @@ use substrate_parser::{
 };
 
 use crate::cut_metadata::{
-    add_as_enum, add_ty_as_regular, DraftRegistry, ShortMetadata, ShortRegistry,
+    add_as_enum, add_ty_as_regular, DraftRegistry, MetadataDescriptor, ShortMetadata, ShortRegistry,
 };
 use crate::error::MetaCutError;
 
@@ -29,6 +29,24 @@ where
     <Self as AsMetadata<E>>::TypeRegistry: HashableRegistry<E>,
 {
     fn types_merkle_root(&self) -> Result<[u8; 32], MetaCutError<E>>;
+    fn digest_with_descriptor(
+        &self,
+        metadata_descriptor: &MetadataDescriptor,
+    ) -> Result<[u8; 32], MetaCutError<E>> {
+        let types_merkle_root = self.types_merkle_root()?;
+        let metadata_descriptor_blake3 = blake3::hash(metadata_descriptor.encode().as_ref());
+        Ok(
+            blake3::hash(&[types_merkle_root, *metadata_descriptor_blake3.as_bytes()].concat())
+                .into(),
+        )
+    }
+}
+
+pub trait ExtendedMetadata<E: ExternalMemory>: HashableMetadata<E>
+where
+    <Self as AsMetadata<E>>::TypeRegistry: HashableRegistry<E>,
+{
+    fn digest(&self) -> Result<[u8; 32], MetaCutError<E>>;
 }
 
 pub trait HashableRegistry<E: ExternalMemory>: ResolveType<E> {
@@ -105,11 +123,27 @@ impl<E: ExternalMemory> AsMetadata<E> for ShortMetadata {
     }
 
     fn spec_name_version(&self) -> Result<SpecNameVersion, MetaVersionError> {
-        Ok(self.spec_name_version.to_owned())
+        match &self.metadata_descriptor {
+            MetadataDescriptor::V0 {
+                extrinsic: _,
+                spec_name_version,
+                base58prefix: _,
+                decimals: _,
+                unit: _,
+            } => Ok(spec_name_version.to_owned()),
+        }
     }
 
     fn extrinsic(&self) -> ExtrinsicMetadata<PortableForm> {
-        self.extrinsic.to_owned()
+        match &self.metadata_descriptor {
+            MetadataDescriptor::V0 {
+                extrinsic,
+                spec_name_version: _,
+                base58prefix: _,
+                decimals: _,
+                unit: _,
+            } => extrinsic.to_owned(),
+        }
     }
 }
 
@@ -121,6 +155,12 @@ impl<E: ExternalMemory> HashableMetadata<E> for ShortMetadata {
         );
         let leaves = <ShortRegistry as HashableRegistry<E>>::merkle_leaves(&self.short_registry)?;
         proof.root(&leaves).ok_or(MetaCutError::TreeCalculateRoot)
+    }
+}
+
+impl<E: ExternalMemory> ExtendedMetadata<E> for ShortMetadata {
+    fn digest(&self) -> Result<[u8; 32], MetaCutError<E>> {
+        self.digest_with_descriptor(&self.metadata_descriptor)
     }
 }
 
