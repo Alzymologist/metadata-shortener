@@ -717,16 +717,20 @@ where
                 propagated
                     .reject_compact()
                     .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-                pass_variant::<B, E, M>(
-                    &x.variants,
-                    data,
-                    ext_memory,
-                    position,
-                    registry,
-                    draft_registry,
-                    &info_ty.path,
-                    id,
-                )
+                if !x.variants.is_empty() {
+                    pass_variant::<B, E, M>(
+                        &x.variants,
+                        data,
+                        ext_memory,
+                        position,
+                        registry,
+                        draft_registry,
+                        &info_ty.path,
+                        id,
+                    )
+                } else {
+                    add_ty_as_regular::<E>(draft_registry, ty.to_owned(), id)
+                }
             }
             TypeDef::Sequence(x) => {
                 let number_of_elements = get_compact::<u32, B, E>(data, ext_memory, position)
