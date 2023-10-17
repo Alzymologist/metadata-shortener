@@ -19,7 +19,7 @@
 //! SCALE-encoded extensions concatenated to it. Call may or may not be double
 //! SCALE-encoded, i.e. preceded by [compact](parity_scale_codec::Compact) of
 //! the call length.
-//! 
+//!
 //! Type describing all calls available is the type of `Call` parameter of the
 //! `ty` type in [`ExtrinsicMetadata`](frame_metadata::v14::ExtrinsicMetadata).
 //! The extensions set is determined by `signed_extensions` in
@@ -225,5 +225,8 @@ extern crate std;
 #[macro_use]
 extern crate alloc as std;
 
+pub use crate::cut_metadata::{
+    cut_metadata, cut_metadata_transaction_unmarked, MetadataDescriptor, ShortMetadata,
+    ShortRegistry, ShortRegistryEntry,
+};
 pub use substrate_parser::ShortSpecs;
-pub use crate::cut_metadata::{cut_metadata, cut_metadata_transaction_unmarked, MetadataDescriptor, ShortMetadata, ShortRegistry, ShortRegistryEntry};
