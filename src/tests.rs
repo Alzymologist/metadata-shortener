@@ -755,3 +755,97 @@ Block Hash: 91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3
 ";
     assert_eq!(extensions_known, extensions_printed);
 }
+
+#[test]
+fn short_metadata_7_decode() {
+    let data = hex::decode("0c000785720a647b9dbf43890b68e8b75b6832581f522fdea8e0c71662a6d19110a85e6c5b41a0cc1c39c26bbe080e79b823d7b34756c1d3df05ca8d1b6a6bac81c76aa268f92ccd919550fd8c6e8b9489f419aaebd697e43d3b0dffd0bb3355b59406322d0b39a7d7481762b339321a4819c955ace60098ca898ab5c4de1e796efd3214de768a4857b88dce6946c280aa643806ce9cc345548b9770dea758c8c974b116b2e142d947a6b2fe037df9ef0744ab4ea4341d68c3a2aeeafc1b295094725f3afbb1833f908cd16a7c8928bf4683f4e8a300034f82cea733248c934b7ee4aa706c1e1bd238ad3a37d62400001800000091b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c391b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3").unwrap();
+
+    let metadata_polkadot = metadata("for_tests/polkadot9430");
+    let specs_polkadot = specs_polkadot();
+
+    let short_metadata = cut_metadata_transaction_unmarked(
+        &data.as_ref(),
+        &mut (),
+        &metadata_polkadot,
+        &specs_polkadot,
+    )
+    .unwrap();
+
+    compare_registry_hashes(&short_metadata, &metadata_polkadot);
+    compare_digests(&short_metadata, &metadata_polkadot, specs_polkadot);
+
+    let reply = parse_transaction_unmarked(
+        &data.as_ref(),
+        &mut (),
+        &short_metadata,
+        H256(
+            hex::decode("91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3")
+                .unwrap()
+                .try_into()
+                .unwrap(),
+        ),
+    )
+    .unwrap()
+    .card(
+        &short_metadata.to_specs(),
+        &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
+            .unwrap()
+            .spec_name,
+    );
+
+    let call_printed = format!(
+        "\n{}\n",
+        reply
+            .call
+            .iter()
+            .map(|card| card.show())
+            .collect::<Vec<String>>()
+            .join("\n")
+    );
+    let call_known = "
+Pallet: ImOnline
+  Call: heartbeat
+    Field Name: heartbeat
+      Struct: 5 field(s)
+        Field Name: block_number
+          u32: 175277319
+        Field Name: network_state
+          Struct: 2 field(s)
+            Field Name: peer_id
+              Sequence u8: 7b9dbf43890b68e8b75b6832581f522fdea8e0c71662a6d191
+            Field Name: external_addresses
+              Sequence: 4 element(s)
+                Sequence u8: 5e6c5b41a0cc1c39c26bbe080e79b823d7b34756c1d3df05ca8d1b6a6bac81c76aa268f92ccd919550fd
+                Sequence u8: 6e8b9489f419aaebd697e43d3b0dffd0bb3355b59406322d0b39a7d7481762b339321a
+                Sequence u8: 19c955ace60098ca898ab5c4de1e796efd32
+                Sequence u8: de768a4857
+        Field Name: session_index
+          u32: 1775144376
+        Field Name: authority_index
+          u32: 2860565062
+        Field Name: validators_len
+          u32: 3456514148
+    Field Name: signature
+      Signature Sr25519: 9cc345548b9770dea758c8c974b116b2e142d947a6b2fe037df9ef0744ab4ea4341d68c3a2aeeafc1b295094725f3afbb1833f908cd16a7c8928bf4683f4e8a3
+";
+    assert_eq!(call_known, call_printed);
+
+    let extensions_printed = format!(
+        "\n{}\n",
+        reply
+            .extensions
+            .iter()
+            .map(|card| card.show())
+            .collect::<Vec<String>>()
+            .join("\n")
+    );
+    let extensions_known = "
+Era: Immortal
+Nonce: 2815328847
+Tip: 7341220634462856.2280923863194730204196 TDOT
+Chain: polkadot9430
+Tx Version: 24
+Block Hash: 91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3
+";
+    assert_eq!(extensions_known, extensions_printed);
+}
