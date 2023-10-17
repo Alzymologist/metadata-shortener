@@ -313,11 +313,6 @@ where
     let extrinsic_ty = meta_v14.extrinsic().ty;
     let meta_v14_types = meta_v14.types();
 
-    let extrinsic_ty_resolved = meta_v14_types
-        .resolve_ty(extrinsic_ty.id, ext_memory)
-        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-
-    add_ty_as_regular::<E>(draft_registry, extrinsic_ty_resolved, extrinsic_ty.id)?;
     let husked_extrinsic_ty = husk_type_no_info::<E, M>(
         &extrinsic_ty,
         &meta_v14_types,
@@ -1065,6 +1060,7 @@ where
         match type_def {
             TypeDef::Composite(x) => {
                 if x.fields.len() == 1 {
+                    add_ty_as_regular::<E>(draft_registry, ty.to_owned(), id)?;
                     id = x.fields[0].ty.id;
                     checker
                         .check_id(id)
@@ -1072,7 +1068,6 @@ where
                     ty = registry
                         .resolve_ty(id, ext_memory)
                         .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-                    add_ty_as_regular::<E>(draft_registry, ty.to_owned(), id)?;
                     if let Hint::None = checker.specialty_set.hint {
                         checker.specialty_set.hint = Hint::from_field(&x.fields[0])
                     }
@@ -1081,6 +1076,7 @@ where
                 }
             }
             TypeDef::Compact(x) => {
+                add_ty_as_regular::<E>(draft_registry, ty.to_owned(), id)?;
                 checker
                     .reject_compact()
                     .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
@@ -1092,7 +1088,6 @@ where
                 ty = registry
                     .resolve_ty(id, ext_memory)
                     .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-                add_ty_as_regular::<E>(draft_registry, ty.to_owned(), id)?;
             }
             _ => break,
         }
