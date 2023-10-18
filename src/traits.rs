@@ -5,9 +5,10 @@ use merkle_cbt::{merkle_tree::Merge, MerkleProof, CBMT};
 use parity_scale_codec::Encode;
 use scale_info::{form::PortableForm, PortableRegistry, Type, TypeDef};
 use substrate_parser::{
-    error::{MetaVersionError, ParserError},
+    error::{MetaVersionError, ParserError, SignableError},
     special_indicators::SpecialtyTypeHinted,
     traits::{AsMetadata, ExternalMemory, ResolveType, SpecNameVersion},
+    ShortSpecs,
 };
 
 use crate::cut_metadata::{
@@ -29,11 +30,20 @@ where
     <Self as AsMetadata<E>>::TypeRegistry: HashableRegistry<E>,
 {
     fn types_merkle_root(&self) -> Result<[u8; 32], MetaCutError<E>>;
-    fn digest_with_descriptor(
+    fn digest_with_short_specs(
         &self,
-        metadata_descriptor: &MetadataDescriptor,
+        short_specs: &ShortSpecs,
     ) -> Result<[u8; 32], MetaCutError<E>> {
         let types_merkle_root = self.types_merkle_root()?;
+        let metadata_descriptor = MetadataDescriptor::V0 {
+            extrinsic: self.extrinsic(),
+            spec_name_version: self
+                .spec_name_version()
+                .map_err(|e| MetaCutError::Signable(SignableError::MetaVersion(e)))?,
+            base58prefix: short_specs.base58prefix,
+            decimals: short_specs.decimals,
+            unit: short_specs.unit.to_owned(),
+        };
         let metadata_descriptor_blake3 = blake3::hash(metadata_descriptor.encode().as_ref());
         Ok(
             blake3::hash(&[types_merkle_root, *metadata_descriptor_blake3.as_bytes()].concat())
@@ -160,7 +170,19 @@ impl<E: ExternalMemory> HashableMetadata<E> for ShortMetadata {
 
 impl<E: ExternalMemory> ExtendedMetadata<E> for ShortMetadata {
     fn digest(&self) -> Result<[u8; 32], MetaCutError<E>> {
-        self.digest_with_descriptor(&self.metadata_descriptor)
+        match &self.metadata_descriptor {
+            MetadataDescriptor::V0 {
+                extrinsic: _,
+                spec_name_version: _,
+                base58prefix,
+                decimals,
+                unit,
+            } => self.digest_with_short_specs(&ShortSpecs {
+                base58prefix: *base58prefix,
+                decimals: *decimals,
+                unit: unit.to_owned(),
+            }),
+        }
     }
 }
 
