@@ -211,7 +211,7 @@
 //! Merkle tree root hash is implemented for
 //! [`RuntimeMetadataV14`](frame_metadata::v14::RuntimeMetadataV14) and for
 //! [`ShortMetadata`]. Complete digest could be calculated for
-//! `HashableMetadata` if `MetadataDescriptor` is provided.
+//! `HashableMetadata` if `ShortSpecs` are provided.
 //!
 //! [`ShortMetadata`] also implements trait
 //! [`ExtendedMetadata`](crate::traits::ExtendedMetadata) for digest calculation
