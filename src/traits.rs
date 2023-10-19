@@ -6,7 +6,6 @@ use parity_scale_codec::Encode;
 use scale_info::{form::PortableForm, PortableRegistry, Type, TypeDef};
 use substrate_parser::{
     error::{MetaVersionError, ParserError, SignableError},
-    special_indicators::SpecialtyTypeHinted,
     traits::{AsMetadata, ExternalMemory, ResolveType, SpecNameVersion},
     ShortSpecs,
 };
@@ -70,15 +69,7 @@ macro_rules! impl_hashable_registry {
                 fn merkle_leaves(&self) -> Result<Vec<[u8;32]>, MetaCutError<E>> {
                     let mut draft_registry = DraftRegistry::new();
                     for registry_entry in self.types.iter() {
-                        match SpecialtyTypeHinted::from_type(&registry_entry.ty) {
-                            SpecialtyTypeHinted::Option(_) => {
-                                add_ty_as_regular::<E>(
-                                    &mut draft_registry,
-                                    registry_entry.ty.to_owned(),
-                                    registry_entry.id,
-                                )?;
-                            }
-                            _ => match registry_entry.ty.type_def {
+                        match registry_entry.ty.type_def {
                                 TypeDef::Variant(ref type_def_variant) => {
                                     for variant in type_def_variant.variants.iter() {
                                         add_as_enum::<E>(
@@ -96,7 +87,6 @@ macro_rules! impl_hashable_registry {
                                         registry_entry.id,
                                     )?;
                                 }
-                            },
                         }
                     }
                     let hashable_registry = draft_registry.finalize_to_hashable();
