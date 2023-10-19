@@ -8,9 +8,7 @@ use primitive_types::H256;
 use substrate_parser::{parse_transaction, parse_transaction_unmarked, AsMetadata, ShortSpecs};
 
 use crate::{
-    cut_metadata::{
-        cut_metadata, cut_metadata_transaction_unmarked, MetadataDescriptor, ShortMetadata,
-    },
+    cut_metadata::{cut_metadata, cut_metadata_transaction_unmarked, ShortMetadata},
     traits::{ExtendedMetadata, HashableMetadata},
 };
 
@@ -63,24 +61,13 @@ fn compare_registry_hashes(short_metadata: &ShortMetadata, full_metadata: &Runti
 fn compare_digests(
     short_metadata: &ShortMetadata,
     full_metadata: &RuntimeMetadataV14,
-    specs: ShortSpecs,
+    specs: &ShortSpecs,
 ) {
     let digest_short_metadata =
         <ShortMetadata as ExtendedMetadata<()>>::digest(short_metadata).unwrap();
-    let descriptor_full_metadata = MetadataDescriptor::V0 {
-        extrinsic: <RuntimeMetadataV14 as AsMetadata<()>>::extrinsic(full_metadata),
-        spec_name_version: <RuntimeMetadataV14 as AsMetadata<()>>::spec_name_version(full_metadata)
-            .unwrap(),
-        base58prefix: specs.base58prefix,
-        decimals: specs.decimals,
-        unit: specs.unit,
-    };
     let digest_full_metadata =
-        <RuntimeMetadataV14 as HashableMetadata<()>>::digest_with_descriptor(
-            full_metadata,
-            &descriptor_full_metadata,
-        )
-        .unwrap();
+        <RuntimeMetadataV14 as HashableMetadata<()>>::digest_with_short_specs(full_metadata, specs)
+            .unwrap();
     assert_eq!(digest_short_metadata, digest_full_metadata);
 }
 
@@ -95,7 +82,7 @@ fn short_metadata_1_decode() {
         cut_metadata(&data.as_ref(), &mut (), &metadata_westend, &specs_westend).unwrap();
 
     compare_registry_hashes(&short_metadata, &metadata_westend);
-    compare_digests(&short_metadata, &metadata_westend, specs_westend);
+    compare_digests(&short_metadata, &metadata_westend, &specs_westend);
 
     let reply = parse_transaction(
         &data.as_ref(),
@@ -189,7 +176,7 @@ fn short_metadata_2_decode() {
         cut_metadata(&data.as_ref(), &mut (), &metadata_acala, &specs_acala).unwrap();
 
     compare_registry_hashes(&short_metadata, &metadata_acala);
-    compare_digests(&short_metadata, &metadata_acala, specs_acala);
+    compare_digests(&short_metadata, &metadata_acala, &specs_acala);
 
     let reply = parse_transaction(
         &data.as_ref(),
@@ -265,7 +252,7 @@ fn short_metadata_3_decode() {
         cut_metadata(&data.as_ref(), &mut (), &metadata_polkadot, &specs_polkadot).unwrap();
 
     compare_registry_hashes(&short_metadata, &metadata_polkadot);
-    compare_digests(&short_metadata, &metadata_polkadot, specs_polkadot);
+    compare_digests(&short_metadata, &metadata_polkadot, &specs_polkadot);
 
     let reply = parse_transaction(
         &data.as_ref(),
@@ -356,7 +343,7 @@ fn short_metadata_4_decode() {
     .unwrap();
 
     compare_registry_hashes(&short_metadata, &metadata_polkadot);
-    compare_digests(&short_metadata, &metadata_polkadot, specs_polkadot);
+    compare_digests(&short_metadata, &metadata_polkadot, &specs_polkadot);
 
     let reply = parse_transaction_unmarked(
         &data.as_ref(),
@@ -607,7 +594,7 @@ fn short_metadata_5_decode() {
             .unwrap();
 
     compare_registry_hashes(&short_metadata, &metadata_astar);
-    compare_digests(&short_metadata, &metadata_astar, specs_astar);
+    compare_digests(&short_metadata, &metadata_astar, &specs_astar);
 
     let reply = parse_transaction_unmarked(
         &data.as_ref(),
@@ -685,7 +672,7 @@ fn short_metadata_6_decode() {
     .unwrap();
 
     compare_registry_hashes(&short_metadata, &metadata_polkadot);
-    compare_digests(&short_metadata, &metadata_polkadot, specs_polkadot);
+    compare_digests(&short_metadata, &metadata_polkadot, &specs_polkadot);
 
     println!("{short_metadata:?}");
 
@@ -772,7 +759,7 @@ fn short_metadata_7_decode() {
     .unwrap();
 
     compare_registry_hashes(&short_metadata, &metadata_polkadot);
-    compare_digests(&short_metadata, &metadata_polkadot, specs_polkadot);
+    compare_digests(&short_metadata, &metadata_polkadot, &specs_polkadot);
 
     let reply = parse_transaction_unmarked(
         &data.as_ref(),
