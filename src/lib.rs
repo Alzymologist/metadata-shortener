@@ -43,11 +43,9 @@
 //! preliminarily decoded and the types used are collected. Entries in
 //! `ShortRegistry` are [`ShortRegistryEntry`] values with unique `id` (same as
 //! in [`PortableRegistry`](scale_info::PortableRegistry)) for type resolving
-//! and [`Type`](scale_info::Type) itself. For enums (except `Option<_>`) only
-//! the variants used in actual decoding are retained, all enum variants remain
-//! within a single entry. `Option<_>` is treated as a regular type, since there
-//! is [`Option<bool>`](parity_scale_codec::OptionBool) requiring special
-//! decoding approach.
+//! and [`Type`](scale_info::Type) itself. For enums only the variants used in
+//! actual decoding are retained, all enum variants remain within a single
+//! entry.
 //!
 //! `ShortMetadata` is generated with
 //! [`cut_metadata`](crate::cut_metadata::cut_metadata) for transactions with
@@ -94,7 +92,7 @@
 //!     cut_metadata(&data.as_ref(), &mut (), &full_metadata, &specs_westend).unwrap();
 //!
 //! // `ShortMetadata` is substantially shorter. SCALE-encoded size:
-//! assert_eq!(4607, short_metadata.encode().len());
+//! assert_eq!(4575, short_metadata.encode().len());
 //!
 //! // Genesis hash, required for decoding:
 //! let westend_genesis_hash =
@@ -192,9 +190,9 @@
 //!
 //! Merkle tree is generated and processed using tools of [`merkle_cbt`] crate.
 //! Merkle leaves are blake3-hashed SCALE-encoded individual
-//! [`ShortRegistryEntry`] values. In enums (except `Option<_>` enums) same `id`
-//! is used for every retained variant, and every retained variant is placed as
-//! an individual enum with a single variant.
+//! [`ShortRegistryEntry`] values. In enums the same `id` is used for every
+//! retained variant, and every retained variant is placed as an individual enum
+//! with a single variant.
 //!
 //! For full metadata `RuntimeMetadataV14`, all leaves are constructed,
 //! deterministically sorted, and processed to build the Merkle tree, and then

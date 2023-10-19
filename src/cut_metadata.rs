@@ -1,6 +1,6 @@
 use frame_metadata::v14::ExtrinsicMetadata;
 use merkle_cbt::CBMT;
-use parity_scale_codec::{Decode, Encode, OptionBool};
+use parity_scale_codec::{Decode, Encode};
 use scale_info::{
     form::PortableForm, interner::UntrackedSymbol, Field, Path, Type, TypeDef, TypeDefBitSequence,
     TypeDefPrimitive, TypeDefVariant, TypeParameter, Variant,
@@ -162,26 +162,13 @@ pub(crate) fn add_ty_as_regular<E: ExternalMemory>(
             }
         }
     }
-    match ty.type_def {
-        // Remove docs from each field in structs.
-        TypeDef::Composite(ref mut type_def_composite) => {
-            for field in type_def_composite.fields.iter_mut() {
-                field.docs.clear();
-            }
+    // Remove docs from each field in structs.
+    // Enums with non-empty set of variants do not get added as regular type,
+    // other types do not have internal field-related docs.
+    if let TypeDef::Composite(ref mut type_def_composite) = ty.type_def {
+        for field in type_def_composite.fields.iter_mut() {
+            field.docs.clear();
         }
-
-        // Some types are added as regular ones, even though technically are enums,
-        // for example, `Option`.
-        // Remove docs from each variant in enums.
-        TypeDef::Variant(ref mut type_def_variant) => {
-            for variant in type_def_variant.variants.iter_mut() {
-                variant.docs.clear();
-                for field in variant.fields.iter_mut() {
-                    field.docs.clear();
-                }
-            }
-        }
-        _ => {}
     }
     ty.docs.clear();
     let entry_details = EntryDetails::Regular { ty };
@@ -639,197 +626,140 @@ where
     let info_ty = Info::from_ty(&ty);
     propagated.add_info(&info_ty);
 
-    if let SpecialtyTypeHinted::Option(ty_symbol) = SpecialtyTypeHinted::from_type(&ty) {
-        propagated
-            .reject_compact()
-            .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-        add_ty_as_regular::<E>(draft_registry, ty, id)?;
-
-        let param_ty = registry
-            .resolve_ty(ty_symbol.id, ext_memory)
-            .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-
-        match &param_ty.type_def {
-            TypeDef::Primitive(TypeDefPrimitive::Bool) => {
-                let slice_to_decode = data
-                    .read_slice(ext_memory, *position, ENUM_INDEX_ENCODED_LEN)
-                    .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-                OptionBool::decode(&mut slice_to_decode.as_ref()).map_err(|_| {
-                    MetaCutError::Signable(SignableError::Parsing(
-                        ParserError::UnexpectedOptionVariant {
-                            position: *position,
-                        },
-                    ))
-                })?;
-                *position += ENUM_INDEX_ENCODED_LEN;
-                add_ty_as_regular::<E>(draft_registry, param_ty, ty_symbol.id)
-            }
-            _ => match data
-                .read_byte(ext_memory, *position)
-                .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?
-            {
-                0 => {
-                    *position += ENUM_INDEX_ENCODED_LEN;
-                    Ok(())
-                }
-                1 => {
-                    *position += ENUM_INDEX_ENCODED_LEN;
-                    pass_type::<B, E, M>(
-                        &Ty::Resolved(ResolvedTy {
-                            ty: param_ty.to_owned(),
-                            id: ty_symbol.id,
-                        }),
-                        data,
-                        ext_memory,
-                        position,
-                        registry,
-                        propagated,
-                        draft_registry,
-                    )
-                }
-                _ => Err(MetaCutError::Signable(SignableError::Parsing(
-                    ParserError::UnexpectedOptionVariant {
-                        position: *position,
-                    },
-                ))),
-            },
+    match &ty.type_def {
+        TypeDef::Composite(x) => {
+            pass_fields::<B, E, M>(
+                &x.fields,
+                data,
+                ext_memory,
+                position,
+                registry,
+                propagated.checker,
+                draft_registry,
+            )?;
+            add_ty_as_regular::<E>(draft_registry, ty.to_owned(), id)
         }
-    } else {
-        match &ty.type_def {
-            TypeDef::Composite(x) => {
-                pass_fields::<B, E, M>(
-                    &x.fields,
+        TypeDef::Variant(x) => {
+            propagated
+                .reject_compact()
+                .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+            if !x.variants.is_empty() {
+                pass_variant::<B, E, M>(
+                    &x.variants,
                     data,
                     ext_memory,
                     position,
                     registry,
-                    propagated.checker,
                     draft_registry,
-                )?;
+                    &info_ty.path,
+                    id,
+                )
+            } else {
                 add_ty_as_regular::<E>(draft_registry, ty.to_owned(), id)
             }
-            TypeDef::Variant(x) => {
-                propagated
-                    .reject_compact()
-                    .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-                if !x.variants.is_empty() {
-                    pass_variant::<B, E, M>(
-                        &x.variants,
-                        data,
-                        ext_memory,
-                        position,
-                        registry,
-                        draft_registry,
-                        &info_ty.path,
-                        id,
-                    )
-                } else {
-                    add_ty_as_regular::<E>(draft_registry, ty.to_owned(), id)
-                }
-            }
-            TypeDef::Sequence(x) => {
-                let number_of_elements = get_compact::<u32, B, E>(data, ext_memory, position)
-                    .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-                propagated.checker.drop_cycle_check();
-                pass_elements_set::<B, E, M>(
-                    &x.type_param,
-                    number_of_elements,
-                    data,
-                    ext_memory,
-                    position,
-                    registry,
-                    propagated,
-                    draft_registry,
-                )?;
-                add_ty_as_regular::<E>(draft_registry, ty, id)
-            }
-            TypeDef::Array(x) => {
-                pass_elements_set::<B, E, M>(
-                    &x.type_param,
-                    x.len,
-                    data,
-                    ext_memory,
-                    position,
-                    registry,
-                    propagated,
-                    draft_registry,
-                )?;
-                add_ty_as_regular::<E>(draft_registry, ty, id)
-            }
-            TypeDef::Tuple(x) => {
-                if x.fields.len() > 1 {
-                    propagated
-                        .reject_compact()
-                        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-                    propagated.forget_hint();
-                }
-                for inner_ty_symbol in x.fields.iter() {
-                    let id = inner_ty_symbol.id;
-                    let ty = registry
-                        .resolve_ty(id, ext_memory)
-                        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-                    pass_type::<B, E, M>(
-                        &Ty::Resolved(ResolvedTy {
-                            ty: ty.to_owned(),
-                            id,
-                        }),
-                        data,
-                        ext_memory,
-                        position,
-                        registry,
-                        Propagated::for_ty(&propagated.checker, &ty, id)
-                            .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?,
-                        draft_registry,
-                    )?;
-                }
-                add_ty_as_regular::<E>(draft_registry, ty, id)
-            }
-            TypeDef::Primitive(x) => {
-                decode_type_def_primitive::<B, E>(
-                    x,
-                    data,
-                    ext_memory,
-                    position,
-                    propagated.checker.specialty_set,
-                )
+        }
+        TypeDef::Sequence(x) => {
+            let number_of_elements = get_compact::<u32, B, E>(data, ext_memory, position)
                 .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-                add_ty_as_regular::<E>(draft_registry, ty, id)
-            }
-            TypeDef::Compact(x) => {
+            propagated.checker.drop_cycle_check();
+            pass_elements_set::<B, E, M>(
+                &x.type_param,
+                number_of_elements,
+                data,
+                ext_memory,
+                position,
+                registry,
+                propagated,
+                draft_registry,
+            )?;
+            add_ty_as_regular::<E>(draft_registry, ty, id)
+        }
+        TypeDef::Array(x) => {
+            pass_elements_set::<B, E, M>(
+                &x.type_param,
+                x.len,
+                data,
+                ext_memory,
+                position,
+                registry,
+                propagated,
+                draft_registry,
+            )?;
+            add_ty_as_regular::<E>(draft_registry, ty, id)
+        }
+        TypeDef::Tuple(x) => {
+            if x.fields.len() > 1 {
                 propagated
                     .reject_compact()
                     .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-                propagated.checker.specialty_set.compact_at = Some(id);
-                propagated
-                    .checker
-                    .check_id(x.type_param.id)
+                propagated.forget_hint();
+            }
+            for inner_ty_symbol in x.fields.iter() {
+                let id = inner_ty_symbol.id;
+                let ty = registry
+                    .resolve_ty(id, ext_memory)
                     .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
                 pass_type::<B, E, M>(
-                    &Ty::Symbol(&x.type_param),
+                    &Ty::Resolved(ResolvedTy {
+                        ty: ty.to_owned(),
+                        id,
+                    }),
                     data,
                     ext_memory,
                     position,
                     registry,
-                    propagated,
+                    Propagated::for_ty(&propagated.checker, &ty, id)
+                        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?,
                     draft_registry,
                 )?;
-                add_ty_as_regular::<E>(draft_registry, ty, id)
             }
-            TypeDef::BitSequence(x) => {
-                propagated
-                    .reject_compact()
-                    .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-                pass_type_def_bit_sequence::<B, E, M>(
-                    x,
-                    id,
-                    data,
-                    ext_memory,
-                    position,
-                    registry,
-                    draft_registry,
-                )?;
-                add_ty_as_regular::<E>(draft_registry, ty, id)
-            }
+            add_ty_as_regular::<E>(draft_registry, ty, id)
+        }
+        TypeDef::Primitive(x) => {
+            decode_type_def_primitive::<B, E>(
+                x,
+                data,
+                ext_memory,
+                position,
+                propagated.checker.specialty_set,
+            )
+            .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+            add_ty_as_regular::<E>(draft_registry, ty, id)
+        }
+        TypeDef::Compact(x) => {
+            propagated
+                .reject_compact()
+                .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+            propagated.checker.specialty_set.compact_at = Some(id);
+            propagated
+                .checker
+                .check_id(x.type_param.id)
+                .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+            pass_type::<B, E, M>(
+                &Ty::Symbol(&x.type_param),
+                data,
+                ext_memory,
+                position,
+                registry,
+                propagated,
+                draft_registry,
+            )?;
+            add_ty_as_regular::<E>(draft_registry, ty, id)
+        }
+        TypeDef::BitSequence(x) => {
+            propagated
+                .reject_compact()
+                .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+            pass_type_def_bit_sequence::<B, E, M>(
+                x,
+                id,
+                data,
+                ext_memory,
+                position,
+                registry,
+                draft_registry,
+            )?;
+            add_ty_as_regular::<E>(draft_registry, ty, id)
         }
     }
 }
