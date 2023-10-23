@@ -15,7 +15,7 @@ fn main() {
     let meta_file = std::fs::read("for_tests/westend9430").unwrap();
     let meta = Vec::<u8>::decode(&mut &meta_file[..]).unwrap();
     println!("length of basic meta: {}", meta.len());
-    let meta_v14 = RuntimeMetadataV14::decode(&mut &meta[5..]).unwrap();
+    let full_metadata = RuntimeMetadataV14::decode(&mut &meta[5..]).unwrap();
 
     let specs_westend = ShortSpecs {
         base58prefix: 42,
@@ -26,7 +26,8 @@ fn main() {
     let data = hex::decode("c901100208060007001b2c3ef70006050c0008264834504a64ace1373f0c8ed5d57381ddf54a2f67a318fa42b1352681606d00aebb0211dbb07b4d335a657257b8ac5e53794c901e4f616d4a254f2490c43934009ae581fef1fc06828723715731adcf810e42ce4dadad629b1b7fa5c3c144a81d55000800d624000007000000e143f23803ac50e8f6f8e62695d1ce9e4e1d68aa36c1cd2cfd15340213f3423e5b1d91c89d3de85a4d6eee76ecf3a303cf38b59e7d81522eb7cd24b02eb161ff").unwrap();
 
     // Make short metadata here. It is sufficient to decode the transaction above. Decoding capabilities are checked in `tests` module.
-    let short_metadata = cut_metadata(&data.as_ref(), &mut (), &meta_v14, &specs_westend).unwrap();
+    let short_metadata =
+        cut_metadata(&data.as_ref(), &mut (), &full_metadata, &specs_westend).unwrap();
     let short_meta_scaled = short_metadata.encode();
     println!(
         "length of shortened meta: {}, number of leaves: {}, number of lemmas: {}",
@@ -39,7 +40,7 @@ fn main() {
     let root_short_metadata =
         <ShortMetadata as HashableMetadata<()>>::types_merkle_root(&short_metadata).unwrap();
     let root_full_metadata =
-        <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(&meta_v14).unwrap();
+        <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(&full_metadata).unwrap();
 
     // Roots are equal.
     assert_eq!(root_short_metadata, root_full_metadata);
@@ -49,7 +50,7 @@ fn main() {
         <ShortMetadata as ExtendedMetadata<()>>::digest(&short_metadata).unwrap();
     let digest_full_metadata =
         <RuntimeMetadataV14 as HashableMetadata<()>>::digest_with_short_specs(
-            &meta_v14,
+            &full_metadata,
             &specs_westend,
         )
         .unwrap();

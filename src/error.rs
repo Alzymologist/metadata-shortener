@@ -29,7 +29,7 @@ impl<E: ExternalMemory> MetaCutError<E> {
         match &self {
             MetaCutError::IndexTwice{id} => format!("While forming shortened metadata types registry, tried to enter type with already existing index {id} and different description. This is code bug, please report it."),
             MetaCutError::NoEntryLargerRegistry => String::from("While forming metadata types registry with excluded types, found type that should exist in larger registry, but does not. This is code bug, please report it."),
-            MetaCutError::Signable(signable_error) => format!("Unable to decode properly the signable transaction used for metadata shortening. {signable_error}"),
+            MetaCutError::Signable(signable_error) => format!("{signable_error}"),
             MetaCutError::TreeCalculateProof => String::from("Unable to calculate proof for merkle tree"),
             MetaCutError::TreeCalculateRoot => String::from("Unable to calculate root hash"),
         }
