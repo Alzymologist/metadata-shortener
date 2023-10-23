@@ -1,3 +1,4 @@
+//! Tools for metadata cutting.
 use frame_metadata::v14::ExtrinsicMetadata;
 use merkle_cbt::CBMT;
 use parity_scale_codec::{Decode, Encode};
@@ -51,7 +52,7 @@ pub enum EntryDetails {
     },
 }
 
-#[derive(Clone, Debug, Decode, Encode)]
+#[derive(Clone, Debug, Decode, Encode, PartialEq)]
 pub struct ShortRegistry {
     pub types: Vec<ShortRegistryEntry>,
 }
@@ -84,6 +85,13 @@ impl DraftRegistry {
                 },
             };
             short_registry.types.push(ShortRegistryEntry { id, ty })
+        }
+        for entry in short_registry.types.iter_mut() {
+            if let TypeDef::Variant(ref mut variants_entry) = entry.ty.type_def {
+                variants_entry
+                    .variants
+                    .sort_by(|a, b| a.index.cmp(&b.index))
+            }
         }
         short_registry.types.sort_by(|a, b| a.id.cmp(&b.id));
         short_registry
@@ -227,7 +235,7 @@ pub(crate) fn add_as_enum<E: ExternalMemory>(
 pub fn pass_call<B, E, M>(
     marked_data: &MarkedData<B, E>,
     ext_memory: &mut E,
-    meta_v14: &M,
+    full_metadata: &M,
     draft_registry: &mut DraftRegistry,
 ) -> Result<(), MetaCutError<E>>
 where
@@ -238,7 +246,13 @@ where
     let data = marked_data.data_no_extensions();
     let mut position = marked_data.call_start();
 
-    pass_call_unmarked(&data, &mut position, ext_memory, meta_v14, draft_registry)?;
+    pass_call_unmarked(
+        &data,
+        &mut position,
+        ext_memory,
+        full_metadata,
+        draft_registry,
+    )?;
     if position != marked_data.extensions_start() {
         Err(MetaCutError::Signable(SignableError::SomeDataNotUsedCall {
             from: position,
@@ -253,7 +267,7 @@ pub fn pass_call_unmarked<B, E, M>(
     data: &B,
     position: &mut usize,
     ext_memory: &mut E,
-    meta_v14: &M,
+    full_metadata: &M,
     draft_registry: &mut DraftRegistry,
 ) -> Result<(), MetaCutError<E>>
 where
@@ -261,7 +275,7 @@ where
     E: ExternalMemory,
     M: AsMetadata<E>,
 {
-    let extrinsic_type_params = extrinsic_type_params(ext_memory, meta_v14, draft_registry)?;
+    let extrinsic_type_params = extrinsic_type_params(ext_memory, full_metadata, draft_registry)?;
 
     let mut found_all_calls_ty = None;
 
@@ -280,7 +294,7 @@ where
         data,
         ext_memory,
         position,
-        &meta_v14.types(),
+        &full_metadata.types(),
         Propagated::new(),
         draft_registry,
     )
@@ -290,19 +304,19 @@ where
 /// get associated `TypeParameter`s set.
 pub fn extrinsic_type_params<E, M>(
     ext_memory: &mut E,
-    meta_v14: &M,
+    full_metadata: &M,
     draft_registry: &mut DraftRegistry,
 ) -> Result<Vec<TypeParameter<PortableForm>>, MetaCutError<E>>
 where
     E: ExternalMemory,
     M: AsMetadata<E>,
 {
-    let extrinsic_ty = meta_v14.extrinsic().ty;
-    let meta_v14_types = meta_v14.types();
+    let extrinsic_ty = full_metadata.extrinsic().ty;
+    let full_metadata_types = full_metadata.types();
 
     let husked_extrinsic_ty = husk_type_no_info::<E, M>(
         &extrinsic_ty,
-        &meta_v14_types,
+        &full_metadata_types,
         ext_memory,
         Checker::new(),
         draft_registry,
@@ -312,7 +326,7 @@ where
     let type_params = match husked_extrinsic_ty.ty.type_def {
         TypeDef::Sequence(ref s) => {
             let element_ty_id = s.type_param.id;
-            let element_ty = meta_v14_types
+            let element_ty = full_metadata_types
                 .resolve_ty(element_ty_id, ext_memory)
                 .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
             if let TypeDef::Primitive(TypeDefPrimitive::U8) = element_ty.type_def {
@@ -335,13 +349,13 @@ where
                 )));
             } else {
                 let field_ty_id = c.fields[0].ty.id;
-                let field_ty = meta_v14_types
+                let field_ty = full_metadata_types
                     .resolve_ty(field_ty_id, ext_memory)
                     .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
                 match field_ty.type_def {
                     TypeDef::Sequence(ref s) => {
                         let element_ty_id = s.type_param.id;
-                        let element_ty = meta_v14_types
+                        let element_ty = full_metadata_types
                             .resolve_ty(element_ty_id, ext_memory)
                             .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
                         if let TypeDef::Primitive(TypeDefPrimitive::U8) = element_ty.type_def {
@@ -384,7 +398,7 @@ where
 pub fn pass_extensions<B, E, M>(
     marked_data: &MarkedData<B, E>,
     ext_memory: &mut E,
-    meta_v14: &M,
+    full_metadata: &M,
     draft_registry: &mut DraftRegistry,
 ) -> Result<(), MetaCutError<E>>
 where
@@ -395,14 +409,20 @@ where
     let mut position = marked_data.extensions_start();
     let data = marked_data.data();
 
-    pass_extensions_unmarked(data, &mut position, ext_memory, meta_v14, draft_registry)
+    pass_extensions_unmarked(
+        data,
+        &mut position,
+        ext_memory,
+        full_metadata,
+        draft_registry,
+    )
 }
 
 pub fn pass_extensions_unmarked<B, E, M>(
     data: &B,
     position: &mut usize,
     ext_memory: &mut E,
-    meta_v14: &M,
+    full_metadata: &M,
     draft_registry: &mut DraftRegistry,
 ) -> Result<(), MetaCutError<E>>
 where
@@ -410,25 +430,25 @@ where
     E: ExternalMemory,
     M: AsMetadata<E>,
 {
-    let meta_v14_types = meta_v14.types();
-    for signed_extensions_metadata in meta_v14.extrinsic().signed_extensions.iter() {
+    let full_metadata_types = full_metadata.types();
+    for signed_extensions_metadata in full_metadata.extrinsic().signed_extensions.iter() {
         pass_type::<B, E, M>(
             &Ty::Symbol(&signed_extensions_metadata.ty),
             data,
             ext_memory,
             position,
-            &meta_v14_types,
+            &full_metadata_types,
             Propagated::from_ext_meta(signed_extensions_metadata),
             draft_registry,
         )?;
     }
-    for signed_extensions_metadata in meta_v14.extrinsic().signed_extensions.iter() {
+    for signed_extensions_metadata in full_metadata.extrinsic().signed_extensions.iter() {
         pass_type::<B, E, M>(
             &Ty::Symbol(&signed_extensions_metadata.additional_signed),
             data,
             ext_memory,
             position,
-            &meta_v14_types,
+            &full_metadata_types,
             Propagated::from_ext_meta(signed_extensions_metadata),
             draft_registry,
         )?;
@@ -452,6 +472,7 @@ pub struct ShortMetadata {
     pub metadata_descriptor: MetadataDescriptor,
 }
 
+#[repr(C)]
 #[derive(Debug, Decode, Encode)]
 pub enum MetadataDescriptor {
     V0 {
@@ -484,7 +505,7 @@ impl ShortMetadata {
 pub fn cut_metadata<B, E, M>(
     data: &B,
     ext_memory: &mut E,
-    meta_v14: &M,
+    full_metadata: &M,
     short_specs: &ShortSpecs,
 ) -> Result<ShortMetadata, MetaCutError<E>>
 where
@@ -496,13 +517,13 @@ where
     let mut draft_registry = DraftRegistry::new();
 
     let marked_data = MarkedData::<B, E>::mark(data, ext_memory).map_err(MetaCutError::Signable)?;
-    pass_call::<B, E, M>(&marked_data, ext_memory, meta_v14, &mut draft_registry)?;
-    pass_extensions::<B, E, M>(&marked_data, ext_memory, meta_v14, &mut draft_registry)?;
+    pass_call::<B, E, M>(&marked_data, ext_memory, full_metadata, &mut draft_registry)?;
+    pass_extensions::<B, E, M>(&marked_data, ext_memory, full_metadata, &mut draft_registry)?;
 
     let short_registry = draft_registry.finalize_to_short();
 
     let leaves_short = <ShortRegistry as HashableRegistry<E>>::merkle_leaves(&short_registry)?;
-    let leaves_long = meta_v14.types().merkle_leaves()?;
+    let leaves_long = full_metadata.types().merkle_leaves()?;
 
     let mut indices: Vec<u32> = Vec::new();
     for entry_short in leaves_short.iter() {
@@ -517,8 +538,8 @@ where
         .ok_or(MetaCutError::TreeCalculateProof)?;
 
     let metadata_descriptor = MetadataDescriptor::V0 {
-        extrinsic: meta_v14.extrinsic(),
-        spec_name_version: meta_v14
+        extrinsic: full_metadata.extrinsic(),
+        spec_name_version: full_metadata
             .spec_name_version()
             .map_err(|e| MetaCutError::Signable(SignableError::MetaVersion(e)))?,
         base58prefix: short_specs.base58prefix,
@@ -537,7 +558,7 @@ where
 pub fn cut_metadata_transaction_unmarked<B, E, M>(
     data: &B,
     ext_memory: &mut E,
-    meta_v14: &M,
+    full_metadata: &M,
     short_specs: &ShortSpecs,
 ) -> Result<ShortMetadata, MetaCutError<E>>
 where
@@ -553,21 +574,21 @@ where
         data,
         &mut position,
         ext_memory,
-        meta_v14,
+        full_metadata,
         &mut draft_registry,
     )?;
     pass_extensions_unmarked::<B, E, M>(
         data,
         &mut position,
         ext_memory,
-        meta_v14,
+        full_metadata,
         &mut draft_registry,
     )?;
 
     let short_registry = draft_registry.finalize_to_short();
 
     let leaves_short = <ShortRegistry as HashableRegistry<E>>::merkle_leaves(&short_registry)?;
-    let leaves_long = meta_v14.types().merkle_leaves()?;
+    let leaves_long = full_metadata.types().merkle_leaves()?;
 
     let mut indices: Vec<u32> = Vec::new();
     for entry_short in leaves_short.iter() {
@@ -582,8 +603,8 @@ where
         .ok_or(MetaCutError::TreeCalculateProof)?;
 
     let metadata_descriptor = MetadataDescriptor::V0 {
-        extrinsic: meta_v14.extrinsic(),
-        spec_name_version: meta_v14
+        extrinsic: full_metadata.extrinsic(),
+        spec_name_version: full_metadata
             .spec_name_version()
             .map_err(|e| MetaCutError::Signable(SignableError::MetaVersion(e)))?,
         base58prefix: short_specs.base58prefix,
@@ -1024,4 +1045,161 @@ where
     }
 
     Ok(HuskedTypeNoInfo { checker, ty, id })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use scale_info::Path;
+
+    use crate::std::string::ToString;
+
+    #[test]
+    fn sort_draft_registry() {
+        let mut draft_registry = DraftRegistry::new();
+        add_as_enum::<()>(
+            &mut draft_registry,
+            &Path::<PortableForm> {
+                segments: vec!["test".to_string(), "Path".to_string()],
+            },
+            Variant::<PortableForm> {
+                name: "OtherVariant".to_string(),
+                fields: Vec::new(),
+                index: 3u8,
+                docs: Vec::new(),
+            },
+            144,
+        )
+        .unwrap();
+        add_as_enum::<()>(
+            &mut draft_registry,
+            &Path::<PortableForm> {
+                segments: vec!["test".to_string(), "Path".to_string()],
+            },
+            Variant::<PortableForm> {
+                name: "SomeVariant".to_string(),
+                fields: Vec::new(),
+                index: 1u8,
+                docs: Vec::new(),
+            },
+            144,
+        )
+        .unwrap();
+        add_as_enum::<()>(
+            &mut draft_registry,
+            &Path::<PortableForm> {
+                segments: vec!["test".to_string(), "Path".to_string()],
+            },
+            Variant::<PortableForm> {
+                name: "ThirdVariant".to_string(),
+                fields: Vec::new(),
+                index: 7u8,
+                docs: Vec::new(),
+            },
+            144,
+        )
+        .unwrap();
+
+        let to_short = draft_registry.finalize_to_short();
+        assert_eq!(
+            to_short,
+            ShortRegistry {
+                types: vec![ShortRegistryEntry {
+                    id: 144,
+                    ty: Type {
+                        path: Path {
+                            segments: vec!["test".to_string(), "Path".to_string()]
+                        },
+                        type_params: Vec::new(),
+                        type_def: TypeDef::Variant(TypeDefVariant {
+                            variants: vec![
+                                Variant {
+                                    name: "SomeVariant".to_string(),
+                                    fields: Vec::new(),
+                                    index: 1,
+                                    docs: Vec::new()
+                                },
+                                Variant {
+                                    name: "OtherVariant".to_string(),
+                                    fields: Vec::new(),
+                                    index: 3,
+                                    docs: Vec::new()
+                                },
+                                Variant {
+                                    name: "ThirdVariant".to_string(),
+                                    fields: Vec::new(),
+                                    index: 7,
+                                    docs: Vec::new()
+                                }
+                            ]
+                        }),
+                        docs: Vec::new()
+                    }
+                }]
+            }
+        );
+
+        let to_hashable = draft_registry.finalize_to_hashable();
+        assert_eq!(
+            to_hashable,
+            ShortRegistry {
+                types: vec![
+                    ShortRegistryEntry {
+                        id: 144,
+                        ty: Type {
+                            path: Path {
+                                segments: vec!["test".to_string(), "Path".to_string()]
+                            },
+                            type_params: Vec::new(),
+                            type_def: TypeDef::Variant(TypeDefVariant {
+                                variants: vec![Variant {
+                                    name: "SomeVariant".to_string(),
+                                    fields: Vec::new(),
+                                    index: 1,
+                                    docs: Vec::new()
+                                }]
+                            }),
+                            docs: Vec::new()
+                        }
+                    },
+                    ShortRegistryEntry {
+                        id: 144,
+                        ty: Type {
+                            path: Path {
+                                segments: vec!["test".to_string(), "Path".to_string()]
+                            },
+                            type_params: Vec::new(),
+                            type_def: TypeDef::Variant(TypeDefVariant {
+                                variants: vec![Variant {
+                                    name: "OtherVariant".to_string(),
+                                    fields: Vec::new(),
+                                    index: 3,
+                                    docs: Vec::new()
+                                }]
+                            }),
+                            docs: Vec::new()
+                        }
+                    },
+                    ShortRegistryEntry {
+                        id: 144,
+                        ty: Type {
+                            path: Path {
+                                segments: vec!["test".to_string(), "Path".to_string()]
+                            },
+                            type_params: Vec::new(),
+                            type_def: TypeDef::Variant(TypeDefVariant {
+                                variants: vec![Variant {
+                                    name: "ThirdVariant".to_string(),
+                                    fields: Vec::new(),
+                                    index: 7,
+                                    docs: Vec::new()
+                                }]
+                            }),
+                            docs: Vec::new()
+                        }
+                    }
+                ]
+            }
+        );
+    }
 }

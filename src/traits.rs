@@ -1,3 +1,4 @@
+//! Traits for digest generation.
 use crate::std::{borrow::ToOwned, vec::Vec};
 
 use frame_metadata::v14::{ExtrinsicMetadata, RuntimeMetadataV14};
@@ -15,7 +16,7 @@ use crate::cut_metadata::{
 };
 use crate::error::MetaCutError;
 
-pub struct MergeHashes;
+pub(crate) struct MergeHashes;
 
 impl Merge for MergeHashes {
     type Item = [u8; 32];

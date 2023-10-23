@@ -15,7 +15,7 @@ fn main() {
     let meta_file = std::fs::read("for_tests/westend9430").unwrap();
     let meta = Vec::<u8>::decode(&mut &meta_file[..]).unwrap();
     println!("length of basic meta: {}", meta.len());
-    let meta_v14 = RuntimeMetadataV14::decode(&mut &meta[5..]).unwrap();
+    let full_metadata = RuntimeMetadataV14::decode(&mut &meta[5..]).unwrap();
 
     let specs_westend = ShortSpecs {
         base58prefix: 42,
@@ -27,7 +27,7 @@ fn main() {
 
     // Make short metadata here. It is sufficient to decode the transaction above. Decoding capabilities are checked in `tests` module.
     let short_metadata =
-        cut_metadata_transaction_unmarked(&data.as_ref(), &mut (), &meta_v14, &specs_westend)
+        cut_metadata_transaction_unmarked(&data.as_ref(), &mut (), &full_metadata, &specs_westend)
             .unwrap();
     let short_meta_scaled = short_metadata.encode();
     println!(
@@ -41,7 +41,7 @@ fn main() {
     let root_short_metadata =
         <ShortMetadata as HashableMetadata<()>>::types_merkle_root(&short_metadata).unwrap();
     let root_full_metadata =
-        <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(&meta_v14).unwrap();
+        <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(&full_metadata).unwrap();
 
     // Roots are equal.
     assert_eq!(root_short_metadata, root_full_metadata);
@@ -51,7 +51,7 @@ fn main() {
         <ShortMetadata as ExtendedMetadata<()>>::digest(&short_metadata).unwrap();
     let digest_full_metadata =
         <RuntimeMetadataV14 as HashableMetadata<()>>::digest_with_short_specs(
-            &meta_v14,
+            &full_metadata,
             &specs_westend,
         )
         .unwrap();
