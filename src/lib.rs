@@ -56,6 +56,39 @@
 //! [`AsMetadata`](substrate_parser::AsMetadata) and could be used for chain
 //! data decoding using tools of [`substrate_parser`] crate.
 //!
+//! SCALE-encoded `ShortMetadata` structure (as received by the cold side) is
+//! following:
+//!
+//! - `ShortRegistry`:  
+//!   - [Compact](parity_scale_codec::Compact) of the number of types described
+//! in `ShortRegistry`  
+//!   - For each of the given number of types:
+//!     - compact type `id` (same number as in original full metadata, for type
+//! resolving)
+//!     - SCALE-encoded [`Type`](scale_info::Type), encoded size is not known
+//! before decoding  
+//! - Indices for Merkle tree leaves derived from types in `ShortRegistry`:  
+//!   - Compact of the number of indices for Merkle tree leaves derived from
+//! types in `ShortRegistry`  
+//!   - Given number of SCALE-encoded `u32` indices, 4 bytes each  
+//! - Merkle tree lemmas:  
+//!   - Compact of the number of lemmas for Merkle tree  
+//!   - Given number of lemmas, 32 bytes each  
+//! - SCALE-encoded [`MetadataDescriptor`]:  
+//!   - 1-byte version of [`MetadataDescriptor`] (currently the only variant is
+//! `0`). For version `0`:  
+//!     - SCALE-encoded
+//! [`ExtrinsicMetadata`](frame_metadata::v14::ExtrinsicMetadata), encoded
+//! size is not known before decoding  
+//!     - Compact length of the printed spec version followed by corresponding
+//! number of utf8 bytes  
+//!     - Compact length of the chain spec name followed by corresponding number
+//! of utf8 bytes  
+//!     - SCALE-encoded `u16` base58 prefix value for the chain, 2 bytes  
+//!     - SCALE-encoded `u8` decimals value for the chain, 1 byte  
+//!     - Compact length of the unit value for the chain followed by
+//! corresponding number of utf8 bytes  
+//!
 //! # Example
 //! ```
 //! # #[cfg(feature = "std")]
