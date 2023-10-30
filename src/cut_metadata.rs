@@ -1,12 +1,4 @@
 //! Tools for metadata cutting.
-use frame_metadata::v14::ExtrinsicMetadata;
-use merkle_cbt::CBMT;
-use parity_scale_codec::{Decode, Encode};
-use scale_info::{
-    form::PortableForm, interner::UntrackedSymbol, Field, Path, Type, TypeDef, TypeDefBitSequence,
-    TypeDefPrimitive, TypeDefVariant, TypeParameter, Variant,
-};
-
 use crate::std::{borrow::ToOwned, string::String, vec::Vec};
 
 #[cfg(not(feature = "std"))]
@@ -14,6 +6,13 @@ use core::any::TypeId;
 #[cfg(feature = "std")]
 use std::any::TypeId;
 
+use frame_metadata::v14::ExtrinsicMetadata;
+use merkle_cbt::CBMT;
+use parity_scale_codec::{Decode, Encode};
+use scale_info::{
+    form::PortableForm, interner::UntrackedSymbol, Field, Path, PortableType, Type, TypeDef,
+    TypeDefBitSequence, TypeDefPrimitive, TypeDefVariant, Variant,
+};
 use substrate_parser::{
     cards::Info,
     compacts::get_compact,
@@ -30,17 +29,27 @@ use substrate_parser::{
 use crate::error::MetaCutError;
 use crate::traits::{HashableMetadata, HashableRegistry, MergeHashes};
 
+/// Temporary registry.
+///
+/// Could be transformed both into [`ShortRegistry`] (for parsing) or into
+/// [`LeavesRegistry`] (for Merkle tree generation).
+///
+/// When type is added to `DraftRegistry`, it has all its docs removed (i.e.
+/// docs for type itself, for fields, and for enum variants).
 #[derive(Debug)]
 pub struct DraftRegistry {
     pub types: Vec<DraftRegistryEntry>,
 }
 
+/// Temporary registry entry: id and entry details.
 #[derive(Debug)]
 pub struct DraftRegistryEntry {
     pub id: u32,
     pub entry_details: EntryDetails,
 }
 
+/// Temporaty registry entry details. Enums ans non-enums are treated
+/// separately.
 #[derive(Debug)]
 pub enum EntryDetails {
     Regular {
@@ -52,23 +61,49 @@ pub enum EntryDetails {
     },
 }
 
+/// Shortened type registry, for use in [`ShortMetadata`].
+///
+/// Note that although its inner structure is identical to that of
+/// [`PortableRegistry`](scale_info::PortableRegistry), `ShortRegistry` has a
+/// different implementation of type resolving with
+/// [`ResolveType`](substrate_parser::traits::ResolveType) trait implementation.
+///
+/// In `PortableRegistry` type is resolved by `id` with in-built tools of
+/// [`scale_info`] crate, effectively `id` being the index of corresponding
+/// `PortableType` in `types` vector.
+///
+/// In `ShortRegistry` resolved `id` must match that of the `PortableType`,
+/// regardless of the order.
 #[derive(Clone, Debug, Decode, Encode, PartialEq)]
 pub struct ShortRegistry {
-    pub types: Vec<ShortRegistryEntry>,
+    pub types: Vec<PortableType>,
 }
 
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq)]
-pub struct ShortRegistryEntry {
-    #[codec(compact)]
-    pub id: u32,
-    pub ty: Type<PortableForm>,
+/// Registry separated into elements that could be transformed into Merkle tree
+/// leaves.
+///
+/// Each element is a [`PortableType`] with either a single type entry
+/// (for non-enums) or with an enum entry with a single enum variant (for
+/// enums). Note that if multiple variants of a single enum are present, they
+/// are entered as separate [`PortableType`]s with the same id. Thus `Leaves`
+/// are not intended to be used for decoding, only for Merkle tree construction.
+#[derive(Debug, PartialEq)]
+pub struct LeavesRegistry {
+    pub types: Vec<PortableType>,
 }
 
 impl DraftRegistry {
+    /// New empty `DraftRegistry`.
     pub fn new() -> Self {
         Self { types: Vec::new() }
     }
 
+    /// Transform into [`ShortRegistry`], suitable for decoding.
+    ///
+    /// In `ShortRegistry`:
+    /// - Each type has an individual entry
+    /// - Entries are sorted by id
+    /// - Variants within single enum are sorted by variant index
     pub fn finalize_to_short(&self) -> ShortRegistry {
         let mut short_registry = ShortRegistry { types: Vec::new() };
         for draft_entry in self.types.iter() {
@@ -84,7 +119,7 @@ impl DraftRegistry {
                     docs: Vec::new(),
                 },
             };
-            short_registry.types.push(ShortRegistryEntry { id, ty })
+            short_registry.types.push(PortableType { id, ty })
         }
         for entry in short_registry.types.iter_mut() {
             if let TypeDef::Variant(ref mut variants_entry) = entry.ty.type_def {
@@ -97,12 +132,21 @@ impl DraftRegistry {
         short_registry
     }
 
-    pub fn finalize_to_hashable(&self) -> ShortRegistry {
-        let mut short_registry = ShortRegistry { types: Vec::new() };
+    /// Transform into [`LeavesRegistry`], suitable for Merkle tree
+    /// construction.
+    ///
+    /// In `LeavesRegistry`:
+    /// - Each non-enum type has an individual entry
+    /// - Each enum variant is transformed into enum type with a single variant,
+    /// id is the same
+    /// - Entries are sorted by id
+    /// - Entries with identical id (enum variants) are sorted by variant index
+    pub fn into_leaves(&self) -> LeavesRegistry {
+        let mut leaves = LeavesRegistry { types: Vec::new() };
         for draft_entry in self.types.iter() {
             let id = draft_entry.id;
             match &draft_entry.entry_details {
-                EntryDetails::Regular { ty } => short_registry.types.push(ShortRegistryEntry {
+                EntryDetails::Regular { ty } => leaves.types.push(PortableType {
                     id,
                     ty: ty.to_owned(),
                 }),
@@ -116,12 +160,12 @@ impl DraftRegistry {
                             }),
                             docs: Vec::new(),
                         };
-                        short_registry.types.push(ShortRegistryEntry { id, ty })
+                        leaves.types.push(PortableType { id, ty })
                     }
                 }
             };
         }
-        short_registry.types.sort_by(|a, b| {
+        leaves.types.sort_by(|a, b| {
             if a.id == b.id {
                 if let TypeDef::Variant(variants_a) = &a.ty.type_def {
                     if let TypeDef::Variant(variants_b) = &b.ty.type_def {
@@ -138,7 +182,7 @@ impl DraftRegistry {
                 a.id.cmp(&b.id)
             }
         });
-        short_registry
+        leaves
     }
 }
 
@@ -148,6 +192,7 @@ impl Default for DraftRegistry {
     }
 }
 
+/// Add type into `DraftRegistry` as regular type, i.e. as non-enum.
 pub(crate) fn add_ty_as_regular<E: ExternalMemory>(
     draft_registry: &mut DraftRegistry,
     mut ty: Type<PortableForm>,
@@ -170,6 +215,7 @@ pub(crate) fn add_ty_as_regular<E: ExternalMemory>(
             }
         }
     }
+
     // Remove docs from each field in structs.
     // Enums with non-empty set of variants do not get added as regular type,
     // other types do not have internal field-related docs.
@@ -178,6 +224,8 @@ pub(crate) fn add_ty_as_regular<E: ExternalMemory>(
             field.docs.clear();
         }
     }
+
+    // Remove docs from type itself.
     ty.docs.clear();
     let entry_details = EntryDetails::Regular { ty };
     let draft_registry_entry = DraftRegistryEntry { id, entry_details };
@@ -185,6 +233,7 @@ pub(crate) fn add_ty_as_regular<E: ExternalMemory>(
     Ok(())
 }
 
+/// Add type into `DraftRegistry` as an enum.
 pub(crate) fn add_as_enum<E: ExternalMemory>(
     draft_registry: &mut DraftRegistry,
     path: &Path<PortableForm>,
@@ -202,11 +251,14 @@ pub(crate) fn add_as_enum<E: ExternalMemory>(
                     ref mut variants,
                 } => {
                     if known_path == path {
-                        // remove variant docs in shortened metadata
+                        // Remove variant docs.
                         variant.docs.clear();
+
+                        // Remove docs for each field.
                         for field in variant.fields.iter_mut() {
                             field.docs.clear();
                         }
+
                         if !variants.contains(&variant) {
                             variants.push(variant)
                         }
@@ -218,10 +270,15 @@ pub(crate) fn add_as_enum<E: ExternalMemory>(
             }
         }
     }
+
+    // Remove variant docs.
     variant.docs.clear();
+
+    // Remove docs for each field.
     for field in variant.fields.iter_mut() {
         field.docs.clear();
     }
+
     let variants = vec![variant];
     let entry_details = EntryDetails::ReduceableEnum {
         path: path.to_owned(),
@@ -232,6 +289,8 @@ pub(crate) fn add_as_enum<E: ExternalMemory>(
     Ok(())
 }
 
+/// Update [`DraftRegistry`] with types needed to parse a call part of a marked
+/// transaction.
 pub fn pass_call<B, E, M>(
     marked_data: &MarkedData<B, E>,
     ext_memory: &mut E,
@@ -263,6 +322,8 @@ where
     }
 }
 
+/// Update [`DraftRegistry`] with types needed to parse a call part of an
+/// unmarked transaction.
 pub fn pass_call_unmarked<B, E, M>(
     data: &B,
     position: &mut usize,
@@ -275,19 +336,7 @@ where
     E: ExternalMemory,
     M: AsMetadata<E>,
 {
-    let extrinsic_type_params = extrinsic_type_params(ext_memory, full_metadata, draft_registry)?;
-
-    let mut found_all_calls_ty = None;
-
-    for param in extrinsic_type_params.iter() {
-        if param.name == CALL_INDICATOR {
-            found_all_calls_ty = param.ty
-        }
-    }
-
-    let all_calls_ty = found_all_calls_ty.ok_or(MetaCutError::Signable(SignableError::Parsing(
-        ParserError::ExtrinsicNoCallParam,
-    )))?;
+    let all_calls_ty = all_calls_ty::<E, M>(ext_memory, full_metadata, draft_registry)?;
 
     pass_type::<B, E, M>(
         &Ty::Symbol(&all_calls_ty),
@@ -300,13 +349,27 @@ where
     )
 }
 
-/// Check that extrinsic type resolves into a SCALE-encoded opaque `Vec<u8>`,
-/// get associated `TypeParameter`s set.
-pub fn extrinsic_type_params<E, M>(
+/// Find type describing all calls, update `DraftRegistry` in the process.
+///
+/// Type provided in `ExtrinsicMetadata` for unchecked extrinsic is expected to
+/// resolve into type with known type path namespace
+/// [`UNCHECKED_EXTRINSIC_NAMESPACE`](substrate_parser::special_indicators::UNCHECKED_EXTRINSIC_NAMESPACE)
+/// and known type path ident
+/// [`UNCHECKED_EXTRINSIC_IDENT`](substrate_parser::special_indicators::UNCHECKED_EXTRINSIC_IDENT).
+///
+/// Resulting type is expected to be an opaque `Vec<u8>` (or a composite with a
+/// single `Vec<u8>` field), and have `Call` parameter (distinguished by a known
+/// [`CALL_INDICATOR`]).
+///
+/// The type of this `Call` parameter is used to decode calls.
+///
+/// `DraftRegistry` is updated with necessary types used when searching for a
+/// type, so that the procedure can be repeated with shortened metadata as well.
+pub fn all_calls_ty<E, M>(
     ext_memory: &mut E,
     full_metadata: &M,
     draft_registry: &mut DraftRegistry,
-) -> Result<Vec<TypeParameter<PortableForm>>, MetaCutError<E>>
+) -> Result<UntrackedSymbol<TypeId>, MetaCutError<E>>
 where
     E: ExternalMemory,
     M: AsMetadata<E>,
@@ -392,9 +455,22 @@ where
         husked_extrinsic_ty.ty,
         husked_extrinsic_ty.id,
     )?;
-    Ok(type_params)
+
+    let mut found_all_calls_ty = None;
+
+    for param in type_params.iter() {
+        if param.name == CALL_INDICATOR {
+            found_all_calls_ty = param.ty
+        }
+    }
+
+    found_all_calls_ty.ok_or(MetaCutError::Signable(SignableError::Parsing(
+        ParserError::ExtrinsicNoCallParam,
+    )))
 }
 
+/// Update [`DraftRegistry`] with types needed to parse extensions of a marked
+/// transaction.
 pub fn pass_extensions<B, E, M>(
     marked_data: &MarkedData<B, E>,
     ext_memory: &mut E,
@@ -418,6 +494,8 @@ where
     )
 }
 
+/// Update [`DraftRegistry`] with types needed to parse extensions of an
+/// unmarked transaction.
 pub fn pass_extensions_unmarked<B, E, M>(
     data: &B,
     position: &mut usize,
@@ -463,6 +541,10 @@ where
     }
 }
 
+/// Shortened metadata, custom-made for specific transaction.
+///
+/// Contains all the data necessary to parse a signable transaction and to
+/// generate a metadata digest.
 #[repr(C)]
 #[derive(Debug, Decode, Encode)]
 pub struct ShortMetadata {
@@ -472,18 +554,24 @@ pub struct ShortMetadata {
     pub metadata_descriptor: MetadataDescriptor,
 }
 
+/// Versioned metadata descriptor with non-registry entities necessary for
+/// transaction parsing.
 #[repr(C)]
 #[derive(Debug, Decode, Encode)]
 pub enum MetadataDescriptor {
     V0 {
         extrinsic: ExtrinsicMetadata<PortableForm>,
-        spec_name_version: SpecNameVersion, // restore later to set of chain name, encoded chain version, and chain version ty
-        base58prefix: u16, // could be in `System` pallet of metadata; add later checking that input matches;
+        spec_name_version: SpecNameVersion,
+        base58prefix: u16,
         decimals: u8,
         unit: String,
     },
 }
 
+/// Construct [`ShortMetadata`] for a regular transaction.
+///
+/// Transaction could be separated into call and extension as the call is
+/// prefixed with call length compact.
 pub fn cut_metadata<B, E, M>(
     data: &B,
     ext_memory: &mut E,
@@ -537,6 +625,10 @@ where
     })
 }
 
+/// Construct [`ShortMetadata`] for an unmarked transaction.
+///
+/// Unmarked transaction is not prefixed with call length compact, and thus call
+/// and extensions could not be separated.
 pub fn cut_metadata_transaction_unmarked<B, E, M>(
     data: &B,
     ext_memory: &mut E,
@@ -602,6 +694,7 @@ where
     })
 }
 
+/// Update [`DraftRegistry`] for parsing data corresponding to a type.
 pub fn pass_type<B, E, M>(
     ty_input: &Ty,
     data: &B,
@@ -767,6 +860,7 @@ where
     }
 }
 
+/// Update [`DraftRegistry`] for parsing a [`Field`] set.
 fn pass_fields<B, E, M>(
     fields: &[Field<PortableForm>],
     data: &B,
@@ -808,6 +902,8 @@ where
     Ok(())
 }
 
+/// Update [`DraftRegistry`] for parsing a set of identical elements (in a
+/// vector or array).
 #[allow(clippy::too_many_arguments)]
 fn pass_elements_set<B, E, M>(
     element: &UntrackedSymbol<TypeId>,
@@ -853,6 +949,7 @@ where
     Ok(())
 }
 
+/// Update [`DraftRegistry`] for parsing a [`Variant`].
 #[allow(clippy::too_many_arguments)]
 fn pass_variant<B, E, M>(
     variants: &[Variant<PortableForm>],
@@ -887,6 +984,7 @@ where
     add_as_enum::<E>(draft_registry, path, found_variant.to_owned(), enum_ty_id)
 }
 
+/// Update [`DraftRegistry`] for parsing a [`TypeDefBitSequence`].
 fn pass_type_def_bit_sequence<B, E, M>(
     bit_ty: &TypeDefBitSequence<PortableForm>,
     id: u32,
@@ -932,6 +1030,7 @@ where
     add_ty_as_regular::<E>(draft_registry, bitstore_type, bit_ty.bit_store_type.id)
 }
 
+/// Move current position after encountering a [`TypeDefBitSequence`].
 fn pass_bitvec_decode<'a, T, B, E>(
     data: &B,
     ext_memory: &'a mut E,
@@ -946,23 +1045,25 @@ where
     Ok(())
 }
 
-/// Type of set element, resolved as completely as possible.
+/// Type, resolved as much as possible.
 ///
-/// Elements in set (vector or array) could have complex solvable descriptions.
+/// `HuskedTypeNoInfo` is useful when decoding sets of identical elements (in
+/// vectors or arrays) and while searching for types with specified descriptors
+/// (such as extrinsic type with pre-known structure).
 ///
-/// Element [`Info`] is collected while resolving the type. No identical
-/// [`Type`] `id`s are expected to be encountered (these are collected and
-/// checked in [`Checker`]), otherwise the resolving would go indefinitely.
+/// No identical [`Type`] `id`s are expected to be encountered, otherwise the
+/// resolving would go indefinitely.
+///
+/// [`Type`] `id`s are collected and checked in [`Checker`].
 struct HuskedTypeNoInfo {
     checker: Checker,
     ty: Type<PortableForm>,
     id: u32,
 }
 
-/// Resolve [`Type`] of set element.
+/// Resolve compact and single-field structs into corresponding inner types.
 ///
-/// Compact and single-field structs are resolved into corresponding inner
-/// types. All available [`Info`] is collected.
+/// Resolving stops when more complex structure or a specialty is encountered.
 fn husk_type_no_info<E, M>(
     entry_symbol: &UntrackedSymbol<TypeId>,
     registry: &M::TypeRegistry,
@@ -1086,7 +1187,7 @@ mod tests {
         assert_eq!(
             to_short,
             ShortRegistry {
-                types: vec![ShortRegistryEntry {
+                types: vec![PortableType {
                     id: 144,
                     ty: Type {
                         path: Path {
@@ -1121,12 +1222,12 @@ mod tests {
             }
         );
 
-        let to_hashable = draft_registry.finalize_to_hashable();
+        let leaves = draft_registry.into_leaves();
         assert_eq!(
-            to_hashable,
-            ShortRegistry {
+            leaves,
+            LeavesRegistry {
                 types: vec![
-                    ShortRegistryEntry {
+                    PortableType {
                         id: 144,
                         ty: Type {
                             path: Path {
@@ -1144,7 +1245,7 @@ mod tests {
                             docs: Vec::new()
                         }
                     },
-                    ShortRegistryEntry {
+                    PortableType {
                         id: 144,
                         ty: Type {
                             path: Path {
@@ -1162,7 +1263,7 @@ mod tests {
                             docs: Vec::new()
                         }
                     },
-                    ShortRegistryEntry {
+                    PortableType {
                         id: 144,
                         ty: Type {
                             path: Path {
