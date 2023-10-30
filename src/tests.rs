@@ -153,14 +153,15 @@ fn test_procedure(
     genesis_hash: H256,
 ) {
     // Data could be parsed with full metadata
-    let parsed_with_full = parse_transaction(&data.as_ref(), &mut (), full_metadata, genesis_hash)
-        .unwrap()
-        .card(
-            specs,
-            &<RuntimeMetadataV14 as AsMetadata<()>>::spec_name_version(full_metadata)
-                .unwrap()
-                .spec_name,
-        );
+    let parsed_with_full =
+        parse_transaction(&data.as_ref(), &mut (), full_metadata, Some(genesis_hash))
+            .unwrap()
+            .card(
+                specs,
+                &<RuntimeMetadataV14 as AsMetadata<()>>::spec_name_version(full_metadata)
+                    .unwrap()
+                    .spec_name,
+            );
 
     // Metadata could be shortened
     let short_metadata = cut_metadata(&data.as_ref(), &mut (), full_metadata, specs).unwrap();
@@ -172,15 +173,15 @@ fn test_procedure(
     compare_digests(&short_metadata, full_metadata, specs);
 
     // Data could be parsed with short metadata
-    let parsed_with_short =
-        parse_transaction(&data.as_ref(), &mut (), &short_metadata, genesis_hash)
-            .unwrap()
-            .card(
-                &short_metadata.to_specs(),
-                &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
-                    .unwrap()
-                    .spec_name,
-            );
+    let parsed_with_short = short_metadata
+        .parse_transaction(&data.as_ref(), &mut ())
+        .unwrap()
+        .card(
+            &<ShortMetadata as ExtendedMetadata<()>>::to_specs(&short_metadata),
+            &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
+                .unwrap()
+                .spec_name,
+        );
 
     // Call data is identical (printed cards with no docs)
     compare_parsing(
@@ -200,7 +201,7 @@ fn test_procedure_transaction_unmarked(
 ) {
     // Data could be parsed with full metadata
     let parsed_with_full =
-        parse_transaction_unmarked(&data.as_ref(), &mut (), full_metadata, genesis_hash)
+        parse_transaction_unmarked(&data.as_ref(), &mut (), full_metadata, Some(genesis_hash))
             .unwrap()
             .card(
                 specs,
@@ -220,15 +221,15 @@ fn test_procedure_transaction_unmarked(
     compare_digests(&short_metadata, full_metadata, specs);
 
     // Data could be parsed with short metadata
-    let parsed_with_short =
-        parse_transaction_unmarked(&data.as_ref(), &mut (), &short_metadata, genesis_hash)
-            .unwrap()
-            .card(
-                &short_metadata.to_specs(),
-                &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
-                    .unwrap()
-                    .spec_name,
-            );
+    let parsed_with_short = short_metadata
+        .parse_transaction_unmarked(&data.as_ref(), &mut ())
+        .unwrap()
+        .card(
+            &<ShortMetadata as ExtendedMetadata<()>>::to_specs(&short_metadata),
+            &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
+                .unwrap()
+                .spec_name,
+        );
 
     // Call data is identical (printed cards with no docs)
     compare_parsing(&parsed_with_full.call, &parsed_with_short.call);

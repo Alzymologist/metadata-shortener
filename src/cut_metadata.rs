@@ -484,24 +484,6 @@ pub enum MetadataDescriptor {
     },
 }
 
-impl ShortMetadata {
-    pub fn to_specs(&self) -> ShortSpecs {
-        match &self.metadata_descriptor {
-            MetadataDescriptor::V0 {
-                extrinsic: _,
-                spec_name_version: _,
-                base58prefix,
-                decimals,
-                unit,
-            } => ShortSpecs {
-                base58prefix: *base58prefix,
-                decimals: *decimals,
-                unit: unit.to_owned(),
-            },
-        }
-    }
-}
-
 pub fn cut_metadata<B, E, M>(
     data: &B,
     ext_memory: &mut E,

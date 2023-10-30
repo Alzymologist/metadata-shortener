@@ -7,8 +7,9 @@ use parity_scale_codec::Encode;
 use scale_info::{form::PortableForm, PortableRegistry, Type, TypeDef};
 use substrate_parser::{
     error::{MetaVersionError, ParserError, SignableError},
-    traits::{AsMetadata, ExternalMemory, ResolveType, SpecNameVersion},
-    ShortSpecs,
+    parse_transaction, parse_transaction_unmarked,
+    traits::{AddressableBuffer, AsMetadata, ExternalMemory, ResolveType, SpecNameVersion},
+    ShortSpecs, TransactionParsed, TransactionUnmarkedParsed,
 };
 
 use crate::cut_metadata::{
@@ -52,11 +53,37 @@ where
     }
 }
 
-pub trait ExtendedMetadata<E: ExternalMemory>: HashableMetadata<E>
+pub trait ExtendedMetadata<E: ExternalMemory>: HashableMetadata<E> + Sized
 where
     <Self as AsMetadata<E>>::TypeRegistry: HashableRegistry<E>,
 {
-    fn digest(&self) -> Result<[u8; 32], MetaCutError<E>>;
+    fn to_specs(&self) -> ShortSpecs;
+
+    fn digest(&self) -> Result<[u8; 32], MetaCutError<E>> {
+        self.digest_with_short_specs(&self.to_specs())
+    }
+
+    fn parse_transaction<B>(
+        &self,
+        data: &B,
+        ext_memory: &mut E,
+    ) -> Result<TransactionParsed<E>, SignableError<E>>
+    where
+        B: AddressableBuffer<E>,
+    {
+        parse_transaction::<B, E, Self>(data, ext_memory, self, None)
+    }
+
+    fn parse_transaction_unmarked<B>(
+        &self,
+        data: &B,
+        ext_memory: &mut E,
+    ) -> Result<TransactionUnmarkedParsed, SignableError<E>>
+    where
+        B: AddressableBuffer<E>,
+    {
+        parse_transaction_unmarked::<B, E, Self>(data, ext_memory, self, None)
+    }
 }
 
 pub trait HashableRegistry<E: ExternalMemory>: ResolveType<E> {
@@ -160,7 +187,7 @@ impl<E: ExternalMemory> HashableMetadata<E> for ShortMetadata {
 }
 
 impl<E: ExternalMemory> ExtendedMetadata<E> for ShortMetadata {
-    fn digest(&self) -> Result<[u8; 32], MetaCutError<E>> {
+    fn to_specs(&self) -> ShortSpecs {
         match &self.metadata_descriptor {
             MetadataDescriptor::V0 {
                 extrinsic: _,
@@ -168,11 +195,11 @@ impl<E: ExternalMemory> ExtendedMetadata<E> for ShortMetadata {
                 base58prefix,
                 decimals,
                 unit,
-            } => self.digest_with_short_specs(&ShortSpecs {
+            } => ShortSpecs {
                 base58prefix: *base58prefix,
                 decimals: *decimals,
                 unit: unit.to_owned(),
-            }),
+            },
         }
     }
 }

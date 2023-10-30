@@ -94,7 +94,10 @@
 //! # #[cfg(feature = "std")]
 //! # {
 //! use frame_metadata::v14::RuntimeMetadataV14;
-//! use metadata_shortener::{cut_metadata, ShortMetadata, ShortSpecs};
+//! use metadata_shortener::{
+//!     traits::ExtendedMetadata,
+//!     cut_metadata, ShortMetadata, ShortSpecs,
+//! };
 //! use parity_scale_codec::{Decode, Encode};
 //! use primitive_types::H256;
 //! use std::str::FromStr;
@@ -138,11 +141,11 @@
 //!     &data.as_ref(),
 //!     &mut (),
 //!     &short_metadata,
-//!     westend_genesis_hash,
+//!     None,
 //! )
 //! .unwrap()
 //! .card(
-//!     &short_metadata.to_specs(),
+//!     &<ShortMetadata as ExtendedMetadata<()>>::to_specs(&short_metadata),
 //!     &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
 //!         .unwrap()
 //!         .spec_name,
@@ -153,7 +156,7 @@
 //!     &data.as_ref(),
 //!     &mut (),
 //!     &full_metadata,
-//!     westend_genesis_hash,
+//!     Some(westend_genesis_hash),
 //! )
 //! .unwrap()
 //! .card(
@@ -248,7 +251,7 @@
 //! [`ExtendedMetadata`](crate::traits::ExtendedMetadata) for digest calculation
 //! without additional data.
 //!
-//! ## `MetadataDescriptor`
+//! ## Metadata descriptor
 //!
 //! `MetadataDescriptor` contains other relatively short data necessary for
 //! decoding and appropriate data representation:
@@ -266,7 +269,7 @@
 //! ```
 //! # #[cfg(feature = "std")]
 //! # {
-//!     use frame_metadata::v14::RuntimeMetadataV14;
+//! use frame_metadata::v14::RuntimeMetadataV14;
 //! use metadata_shortener::{
 //!     cut_metadata,
 //!     traits::{ExtendedMetadata, HashableMetadata},
