@@ -48,7 +48,7 @@ pub struct DraftRegistryEntry {
     pub entry_details: EntryDetails,
 }
 
-/// Temporaty registry entry details. Enums ans non-enums are treated
+/// Temporary registry entry details. Enums and non-enums are treated
 /// separately.
 #[derive(Debug)]
 pub enum EntryDetails {
