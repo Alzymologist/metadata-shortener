@@ -145,7 +145,8 @@
 //! )
 //! .unwrap()
 //! .card(
-//!     &<ShortMetadata as ExtendedMetadata<()>>::to_specs(&short_metadata),
+//!     &<ShortMetadata as ExtendedMetadata<()>>::to_specs(&short_metadata)
+//!         .unwrap(),
 //!     &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
 //!         .unwrap()
 //!         .spec_name,
