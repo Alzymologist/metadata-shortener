@@ -155,11 +155,20 @@ macro_rules! impl_hashable_registry {
                     for registry_entry in self.types.iter() {
                         match registry_entry.ty.type_def {
                                 TypeDef::Variant(ref type_def_variant) => {
-                                    for variant in type_def_variant.variants.iter() {
-                                        add_as_enum(
+                                    if !type_def_variant.variants.is_empty() {
+                                        for variant in type_def_variant.variants.iter() {
+                                            add_as_enum(
+                                                &mut draft_registry,
+                                                &registry_entry.ty.path,
+                                                variant.to_owned(),
+                                                registry_entry.id,
+                                            )?;
+                                        }
+                                    }
+                                    else {
+                                        add_ty_as_regular(
                                             &mut draft_registry,
-                                            &registry_entry.ty.path,
-                                            variant.to_owned(),
+                                            registry_entry.ty.to_owned(),
                                             registry_entry.id,
                                         )?;
                                     }

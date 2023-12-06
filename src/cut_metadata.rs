@@ -1162,7 +1162,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use scale_info::Path;
+    use scale_info::{Path, PortableRegistry};
 
     use crate::std::string::ToString;
 
@@ -1312,6 +1312,58 @@ mod tests {
                     }
                 ]
             }
+        );
+    }
+
+    #[test]
+    fn keep_empty_enums_portable() {
+        let portable_registry = PortableRegistry {
+            types: vec![
+                PortableType {
+                    id: 0,
+                    ty: Type {
+                        path: Path {
+                            segments: vec!["test".to_string(), "Path".to_string()]
+                        },
+                        type_params: Vec::new(),
+                        type_def: TypeDef::Variant(TypeDefVariant {
+                            variants: vec![]
+                        }),
+                        docs: vec!["important information".to_string(), "danger ahead".to_string()]
+                    }
+                }
+            ]
+        };
+        let leaves = <PortableRegistry as HashableRegistry<()>>::merkle_leaves(&portable_registry).unwrap();
+        assert_eq!(
+            leaves.len(),
+            1,
+        );
+    }
+
+    #[test]
+    fn keep_empty_enums_short() {
+        let short_registry = ShortRegistry {
+            types: vec![
+                PortableType {
+                    id: 15,
+                    ty: Type {
+                        path: Path {
+                            segments: vec!["test".to_string(), "Path".to_string()]
+                        },
+                        type_params: Vec::new(),
+                        type_def: TypeDef::Variant(TypeDefVariant {
+                            variants: vec![]
+                        }),
+                        docs: vec!["important information".to_string(), "danger ahead".to_string()]
+                    }
+                }
+            ]
+        };
+        let leaves = <ShortRegistry as HashableRegistry<()>>::merkle_leaves(&short_registry).unwrap();
+        assert_eq!(
+            leaves.len(),
+            1,
         );
     }
 }
