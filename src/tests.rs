@@ -56,6 +56,15 @@ fn genesis_hash_polkadot() -> H256 {
     )
 }
 
+fn genesis_hash_rococo() -> H256 {
+    H256(
+        hex::decode("f421bf66696bba5abfa1ae7aa8ec8bac9ed151f7ce16b996b5d3bbde614c3441")
+            .unwrap()
+            .try_into()
+            .unwrap(),
+    )
+}
+
 fn genesis_hash_westend() -> H256 {
     H256(
         hex::decode("e143f23803ac50e8f6f8e62695d1ce9e4e1d68aa36c1cd2cfd15340213f3423e")
@@ -94,6 +103,14 @@ fn specs_polkadot() -> ShortSpecs {
         base58prefix: 0,
         decimals: 10,
         unit: "DOT".to_string(),
+    }
+}
+
+fn specs_rococo() -> ShortSpecs {
+    ShortSpecs {
+        base58prefix: 42,
+        decimals: 12,
+        unit: "ROC".to_string(),
     }
 }
 
@@ -177,7 +194,7 @@ fn test_procedure(
         .parse_transaction(&data.as_ref(), &mut ())
         .unwrap()
         .card(
-            &<ShortMetadata as ExtendedMetadata<()>>::to_specs(&short_metadata),
+            &<ShortMetadata as ExtendedMetadata<()>>::to_specs(&short_metadata).unwrap(),
             &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
                 .unwrap()
                 .spec_name,
@@ -225,7 +242,7 @@ fn test_procedure_transaction_unmarked(
         .parse_transaction_unmarked(&data.as_ref(), &mut ())
         .unwrap()
         .card(
-            &<ShortMetadata as ExtendedMetadata<()>>::to_specs(&short_metadata),
+            &<ShortMetadata as ExtendedMetadata<()>>::to_specs(&short_metadata).unwrap(),
             &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
                 .unwrap()
                 .spec_name,
@@ -326,5 +343,29 @@ fn short_metadata_8() {
         &metadata_bifrost,
         &specs_bifrost(),
         genesis_hash_bifrost(),
+    );
+}
+
+#[test]
+fn short_metadata_9() {
+    let data = hex::decode("0403008465567bd3ad504ab85a6d3ecbc0ce39eec6aacc180c38b564513d9f6113e14c070010a5d4e805000000002427000016000000f421bf66696bba5abfa1ae7aa8ec8bac9ed151f7ce16b996b5d3bbde614c3441f421bf66696bba5abfa1ae7aa8ec8bac9ed151f7ce16b996b5d3bbde614c344100").unwrap();
+    let metadata_rococo = metadata("for_tests/rococo_updated");
+    test_procedure_transaction_unmarked(
+        data,
+        &metadata_rococo,
+        &specs_rococo(),
+        genesis_hash_rococo(),
+    );
+}
+
+#[test]
+fn short_metadata_10() {
+    let data = hex::decode("0403008465567bd3ad504ab85a6d3ecbc0ce39eec6aacc180c38b564513d9f6113e14c070010a5d4e805000000012427000016000000f421bf66696bba5abfa1ae7aa8ec8bac9ed151f7ce16b996b5d3bbde614c3441f421bf66696bba5abfa1ae7aa8ec8bac9ed151f7ce16b996b5d3bbde614c3441017a090b369e6a7472778569cb3e42ba5dcf4eca8ab505e895cd5463ca48d64ac9").unwrap();
+    let metadata_rococo = metadata("for_tests/rococo_updated");
+    test_procedure_transaction_unmarked(
+        data,
+        &metadata_rococo,
+        &specs_rococo(),
+        genesis_hash_rococo(),
     );
 }
