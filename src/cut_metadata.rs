@@ -26,7 +26,7 @@ use substrate_parser::{
     MarkedData, ShortSpecs,
 };
 
-use crate::error::MetaCutError;
+use crate::error::{MetaCutError, RegistryCutError};
 use crate::traits::{HashableMetadata, HashableRegistry, MergeHashes};
 
 /// Temporary registry.
@@ -193,11 +193,11 @@ impl Default for DraftRegistry {
 }
 
 /// Add type into `DraftRegistry` as regular type, i.e. as non-enum.
-pub(crate) fn add_ty_as_regular<E: ExternalMemory>(
+pub(crate) fn add_ty_as_regular(
     draft_registry: &mut DraftRegistry,
     mut ty: Type<PortableForm>,
     id: u32,
-) -> Result<(), MetaCutError<E>> {
+) -> Result<(), RegistryCutError> {
     for draft_registry_entry in draft_registry.types.iter() {
         if draft_registry_entry.id == id {
             match draft_registry_entry.entry_details {
@@ -205,13 +205,13 @@ pub(crate) fn add_ty_as_regular<E: ExternalMemory>(
                     if known_ty == &ty {
                         return Ok(());
                     } else {
-                        return Err(MetaCutError::IndexTwice { id });
+                        return Err(RegistryCutError::IndexTwice { id });
                     }
                 }
                 EntryDetails::ReduceableEnum {
                     path: _,
                     variants: _,
-                } => return Err(MetaCutError::IndexTwice { id }),
+                } => return Err(RegistryCutError::IndexTwice { id }),
             }
         }
     }
@@ -234,17 +234,17 @@ pub(crate) fn add_ty_as_regular<E: ExternalMemory>(
 }
 
 /// Add type into `DraftRegistry` as an enum.
-pub(crate) fn add_as_enum<E: ExternalMemory>(
+pub(crate) fn add_as_enum(
     draft_registry: &mut DraftRegistry,
     path: &Path<PortableForm>,
     mut variant: Variant<PortableForm>,
     id: u32,
-) -> Result<(), MetaCutError<E>> {
+) -> Result<(), RegistryCutError> {
     for draft_registry_entry in draft_registry.types.iter_mut() {
         if draft_registry_entry.id == id {
             match draft_registry_entry.entry_details {
                 EntryDetails::Regular { ty: _ } => {
-                    return Err(MetaCutError::IndexTwice { id });
+                    return Err(RegistryCutError::IndexTwice { id });
                 }
                 EntryDetails::ReduceableEnum {
                     path: ref known_path,
@@ -264,7 +264,7 @@ pub(crate) fn add_as_enum<E: ExternalMemory>(
                         }
                         return Ok(());
                     } else {
-                        return Err(MetaCutError::IndexTwice { id });
+                        return Err(RegistryCutError::IndexTwice { id });
                     }
                 }
             }
@@ -292,11 +292,11 @@ pub(crate) fn add_as_enum<E: ExternalMemory>(
 /// Update [`DraftRegistry`] with types needed to parse a call part of a marked
 /// transaction.
 pub fn pass_call<B, E, M>(
-    marked_data: &MarkedData<B, E>,
+    marked_data: &MarkedData<B, E, M>,
     ext_memory: &mut E,
     full_metadata: &M,
     draft_registry: &mut DraftRegistry,
-) -> Result<(), MetaCutError<E>>
+) -> Result<(), MetaCutError<E, M>>
 where
     B: AddressableBuffer<E>,
     E: ExternalMemory,
@@ -330,7 +330,7 @@ pub fn pass_call_unmarked<B, E, M>(
     ext_memory: &mut E,
     full_metadata: &M,
     draft_registry: &mut DraftRegistry,
-) -> Result<(), MetaCutError<E>>
+) -> Result<(), MetaCutError<E, M>>
 where
     B: AddressableBuffer<E>,
     E: ExternalMemory,
@@ -369,12 +369,15 @@ pub fn all_calls_ty<E, M>(
     ext_memory: &mut E,
     full_metadata: &M,
     draft_registry: &mut DraftRegistry,
-) -> Result<UntrackedSymbol<TypeId>, MetaCutError<E>>
+) -> Result<UntrackedSymbol<TypeId>, MetaCutError<E, M>>
 where
     E: ExternalMemory,
     M: AsMetadata<E>,
 {
-    let extrinsic_ty = full_metadata.extrinsic().ty;
+    let extrinsic = full_metadata
+        .extrinsic()
+        .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?;
+    let extrinsic_ty = extrinsic.ty;
     let full_metadata_types = full_metadata.types();
 
     let husked_extrinsic_ty = husk_type_no_info::<E, M>(
@@ -393,7 +396,8 @@ where
                 .resolve_ty(element_ty_id, ext_memory)
                 .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
             if let TypeDef::Primitive(TypeDefPrimitive::U8) = element_ty.type_def {
-                add_ty_as_regular(draft_registry, element_ty, element_ty_id)?;
+                add_ty_as_regular(draft_registry, element_ty, element_ty_id)
+                    .map_err(MetaCutError::Registry)?;
                 husked_extrinsic_ty.ty.type_params.to_owned()
             } else {
                 return Err(MetaCutError::Signable(SignableError::Parsing(
@@ -422,7 +426,8 @@ where
                             .resolve_ty(element_ty_id, ext_memory)
                             .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
                         if let TypeDef::Primitive(TypeDefPrimitive::U8) = element_ty.type_def {
-                            add_ty_as_regular(draft_registry, field_ty, field_ty_id)?;
+                            add_ty_as_regular(draft_registry, field_ty, field_ty_id)
+                                .map_err(MetaCutError::Registry)?;
                             husked_extrinsic_ty.ty.type_params.to_owned()
                         } else {
                             return Err(MetaCutError::Signable(SignableError::Parsing(
@@ -454,7 +459,8 @@ where
         draft_registry,
         husked_extrinsic_ty.ty,
         husked_extrinsic_ty.id,
-    )?;
+    )
+    .map_err(MetaCutError::Registry)?;
 
     let mut found_all_calls_ty = None;
 
@@ -472,11 +478,11 @@ where
 /// Update [`DraftRegistry`] with types needed to parse extensions of a marked
 /// transaction.
 pub fn pass_extensions<B, E, M>(
-    marked_data: &MarkedData<B, E>,
+    marked_data: &MarkedData<B, E, M>,
     ext_memory: &mut E,
     full_metadata: &M,
     draft_registry: &mut DraftRegistry,
-) -> Result<(), MetaCutError<E>>
+) -> Result<(), MetaCutError<E, M>>
 where
     B: AddressableBuffer<E>,
     E: ExternalMemory,
@@ -502,14 +508,17 @@ pub fn pass_extensions_unmarked<B, E, M>(
     ext_memory: &mut E,
     full_metadata: &M,
     draft_registry: &mut DraftRegistry,
-) -> Result<(), MetaCutError<E>>
+) -> Result<(), MetaCutError<E, M>>
 where
     B: AddressableBuffer<E>,
     E: ExternalMemory,
     M: AsMetadata<E>,
 {
     let full_metadata_types = full_metadata.types();
-    for signed_extensions_metadata in full_metadata.extrinsic().signed_extensions.iter() {
+    let extrinsic = full_metadata
+        .extrinsic()
+        .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?;
+    for signed_extensions_metadata in extrinsic.signed_extensions.iter() {
         pass_type::<B, E, M>(
             &Ty::Symbol(&signed_extensions_metadata.ty),
             data,
@@ -520,7 +529,7 @@ where
             draft_registry,
         )?;
     }
-    for signed_extensions_metadata in full_metadata.extrinsic().signed_extensions.iter() {
+    for signed_extensions_metadata in extrinsic.signed_extensions.iter() {
         pass_type::<B, E, M>(
             &Ty::Symbol(&signed_extensions_metadata.additional_signed),
             data,
@@ -557,9 +566,11 @@ pub struct ShortMetadata {
 /// Versioned metadata descriptor with non-registry entities necessary for
 /// transaction parsing.
 #[repr(C)]
+#[non_exhaustive]
 #[derive(Debug, Decode, Encode)]
 pub enum MetadataDescriptor {
-    V0 {
+    V0,
+    V1 {
         extrinsic: ExtrinsicMetadata<PortableForm>,
         spec_name_version: SpecNameVersion,
         base58prefix: u16,
@@ -577,7 +588,7 @@ pub fn cut_metadata<B, E, M>(
     ext_memory: &mut E,
     full_metadata: &M,
     short_specs: &ShortSpecs,
-) -> Result<ShortMetadata, MetaCutError<E>>
+) -> Result<ShortMetadata, MetaCutError<E, M>>
 where
     B: AddressableBuffer<E>,
     E: ExternalMemory,
@@ -586,14 +597,19 @@ where
 {
     let mut draft_registry = DraftRegistry::new();
 
-    let marked_data = MarkedData::<B, E>::mark(data, ext_memory).map_err(MetaCutError::Signable)?;
+    let marked_data =
+        MarkedData::<B, E, M>::mark(data, ext_memory).map_err(MetaCutError::Signable)?;
     pass_call::<B, E, M>(&marked_data, ext_memory, full_metadata, &mut draft_registry)?;
     pass_extensions::<B, E, M>(&marked_data, ext_memory, full_metadata, &mut draft_registry)?;
 
     let short_registry = draft_registry.finalize_to_short();
 
-    let leaves_short = <ShortRegistry as HashableRegistry<E>>::merkle_leaves(&short_registry)?;
-    let leaves_long = full_metadata.types().merkle_leaves()?;
+    let leaves_short = <ShortRegistry as HashableRegistry<E>>::merkle_leaves(&short_registry)
+        .map_err(MetaCutError::Registry)?;
+    let leaves_long = full_metadata
+        .types()
+        .merkle_leaves()
+        .map_err(MetaCutError::Registry)?;
 
     let mut indices: Vec<u32> = Vec::new();
     for entry_short in leaves_short.iter() {
@@ -607,11 +623,13 @@ where
     let proof = CBMT::<[u8; 32], MergeHashes>::build_merkle_proof(&leaves_long, &indices)
         .ok_or(MetaCutError::TreeCalculateProof)?;
 
-    let metadata_descriptor = MetadataDescriptor::V0 {
-        extrinsic: full_metadata.extrinsic(),
+    let metadata_descriptor = MetadataDescriptor::V1 {
+        extrinsic: full_metadata
+            .extrinsic()
+            .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
         spec_name_version: full_metadata
             .spec_name_version()
-            .map_err(|e| MetaCutError::Signable(SignableError::MetaVersion(e)))?,
+            .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
         base58prefix: short_specs.base58prefix,
         decimals: short_specs.decimals,
         unit: short_specs.unit.to_owned(),
@@ -634,7 +652,7 @@ pub fn cut_metadata_transaction_unmarked<B, E, M>(
     ext_memory: &mut E,
     full_metadata: &M,
     short_specs: &ShortSpecs,
-) -> Result<ShortMetadata, MetaCutError<E>>
+) -> Result<ShortMetadata, MetaCutError<E, M>>
 where
     B: AddressableBuffer<E>,
     E: ExternalMemory,
@@ -661,8 +679,12 @@ where
 
     let short_registry = draft_registry.finalize_to_short();
 
-    let leaves_short = <ShortRegistry as HashableRegistry<E>>::merkle_leaves(&short_registry)?;
-    let leaves_long = full_metadata.types().merkle_leaves()?;
+    let leaves_short = <ShortRegistry as HashableRegistry<E>>::merkle_leaves(&short_registry)
+        .map_err(MetaCutError::Registry)?;
+    let leaves_long = full_metadata
+        .types()
+        .merkle_leaves()
+        .map_err(MetaCutError::Registry)?;
 
     let mut indices: Vec<u32> = Vec::new();
     for entry_short in leaves_short.iter() {
@@ -676,11 +698,13 @@ where
     let proof = CBMT::<[u8; 32], MergeHashes>::build_merkle_proof(&leaves_long, &indices)
         .ok_or(MetaCutError::TreeCalculateProof)?;
 
-    let metadata_descriptor = MetadataDescriptor::V0 {
-        extrinsic: full_metadata.extrinsic(),
+    let metadata_descriptor = MetadataDescriptor::V1 {
+        extrinsic: full_metadata
+            .extrinsic()
+            .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
         spec_name_version: full_metadata
             .spec_name_version()
-            .map_err(|e| MetaCutError::Signable(SignableError::MetaVersion(e)))?,
+            .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
         base58prefix: short_specs.base58prefix,
         decimals: short_specs.decimals,
         unit: short_specs.unit.to_owned(),
@@ -703,7 +727,7 @@ pub fn pass_type<B, E, M>(
     registry: &M::TypeRegistry,
     mut propagated: Propagated,
     draft_registry: &mut DraftRegistry,
-) -> Result<(), MetaCutError<E>>
+) -> Result<(), MetaCutError<E, M>>
 where
     B: AddressableBuffer<E>,
     E: ExternalMemory,
@@ -733,7 +757,7 @@ where
                 propagated.checker,
                 draft_registry,
             )?;
-            add_ty_as_regular::<E>(draft_registry, ty.to_owned(), id)
+            add_ty_as_regular(draft_registry, ty.to_owned(), id).map_err(MetaCutError::Registry)
         }
         TypeDef::Variant(x) => {
             propagated
@@ -751,7 +775,7 @@ where
                     id,
                 )
             } else {
-                add_ty_as_regular::<E>(draft_registry, ty.to_owned(), id)
+                add_ty_as_regular(draft_registry, ty.to_owned(), id).map_err(MetaCutError::Registry)
             }
         }
         TypeDef::Sequence(x) => {
@@ -768,7 +792,7 @@ where
                 propagated,
                 draft_registry,
             )?;
-            add_ty_as_regular::<E>(draft_registry, ty, id)
+            add_ty_as_regular(draft_registry, ty, id).map_err(MetaCutError::Registry)
         }
         TypeDef::Array(x) => {
             pass_elements_set::<B, E, M>(
@@ -781,7 +805,7 @@ where
                 propagated,
                 draft_registry,
             )?;
-            add_ty_as_regular::<E>(draft_registry, ty, id)
+            add_ty_as_regular(draft_registry, ty, id).map_err(MetaCutError::Registry)
         }
         TypeDef::Tuple(x) => {
             if x.fields.len() > 1 {
@@ -809,7 +833,7 @@ where
                     draft_registry,
                 )?;
             }
-            add_ty_as_regular::<E>(draft_registry, ty, id)
+            add_ty_as_regular(draft_registry, ty, id).map_err(MetaCutError::Registry)
         }
         TypeDef::Primitive(x) => {
             decode_type_def_primitive::<B, E>(
@@ -820,7 +844,7 @@ where
                 propagated.checker.specialty_set,
             )
             .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-            add_ty_as_regular::<E>(draft_registry, ty, id)
+            add_ty_as_regular(draft_registry, ty, id).map_err(MetaCutError::Registry)
         }
         TypeDef::Compact(x) => {
             propagated
@@ -840,7 +864,7 @@ where
                 propagated,
                 draft_registry,
             )?;
-            add_ty_as_regular::<E>(draft_registry, ty, id)
+            add_ty_as_regular(draft_registry, ty, id).map_err(MetaCutError::Registry)
         }
         TypeDef::BitSequence(x) => {
             propagated
@@ -855,7 +879,7 @@ where
                 registry,
                 draft_registry,
             )?;
-            add_ty_as_regular::<E>(draft_registry, ty, id)
+            add_ty_as_regular(draft_registry, ty, id).map_err(MetaCutError::Registry)
         }
     }
 }
@@ -869,7 +893,7 @@ fn pass_fields<B, E, M>(
     registry: &M::TypeRegistry,
     mut checker: Checker,
     draft_registry: &mut DraftRegistry,
-) -> Result<(), MetaCutError<E>>
+) -> Result<(), MetaCutError<E, M>>
 where
     B: AddressableBuffer<E>,
     E: ExternalMemory,
@@ -914,7 +938,7 @@ fn pass_elements_set<B, E, M>(
     registry: &M::TypeRegistry,
     propagated: Propagated,
     draft_registry: &mut DraftRegistry,
-) -> Result<(), MetaCutError<E>>
+) -> Result<(), MetaCutError<E, M>>
 where
     B: AddressableBuffer<E>,
     E: ExternalMemory,
@@ -960,7 +984,7 @@ fn pass_variant<B, E, M>(
     draft_registry: &mut DraftRegistry,
     path: &Path<PortableForm>,
     enum_ty_id: u32,
-) -> Result<(), MetaCutError<E>>
+) -> Result<(), MetaCutError<E, M>>
 where
     B: AddressableBuffer<E>,
     E: ExternalMemory,
@@ -981,7 +1005,8 @@ where
         draft_registry,
     )?;
 
-    add_as_enum::<E>(draft_registry, path, found_variant.to_owned(), enum_ty_id)
+    add_as_enum(draft_registry, path, found_variant.to_owned(), enum_ty_id)
+        .map_err(MetaCutError::Registry)
 }
 
 /// Update [`DraftRegistry`] for parsing a [`TypeDefBitSequence`].
@@ -993,7 +1018,7 @@ fn pass_type_def_bit_sequence<B, E, M>(
     position: &mut usize,
     registry: &M::TypeRegistry,
     draft_registry: &mut DraftRegistry,
-) -> Result<(), MetaCutError<E>>
+) -> Result<(), MetaCutError<E, M>>
 where
     B: AddressableBuffer<E>,
     E: ExternalMemory,
@@ -1003,7 +1028,8 @@ where
     let bitorder_type = registry
         .resolve_ty(bit_ty.bit_order_type.id, ext_memory)
         .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-    add_ty_as_regular::<E>(draft_registry, bitorder_type, bit_ty.bit_order_type.id)?;
+    add_ty_as_regular(draft_registry, bitorder_type, bit_ty.bit_order_type.id)
+        .map_err(MetaCutError::Registry)?;
 
     // BitStore
     let bitstore_type = registry
@@ -1027,7 +1053,8 @@ where
     }
     .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
 
-    add_ty_as_regular::<E>(draft_registry, bitstore_type, bit_ty.bit_store_type.id)
+    add_ty_as_regular(draft_registry, bitstore_type, bit_ty.bit_store_type.id)
+        .map_err(MetaCutError::Registry)
 }
 
 /// Move current position after encountering a [`TypeDefBitSequence`].
@@ -1070,7 +1097,7 @@ fn husk_type_no_info<E, M>(
     ext_memory: &mut E,
     mut checker: Checker,
     draft_registry: &mut DraftRegistry,
-) -> Result<HuskedTypeNoInfo, MetaCutError<E>>
+) -> Result<HuskedTypeNoInfo, MetaCutError<E, M>>
 where
     E: ExternalMemory,
     M: AsMetadata<E>,
@@ -1094,7 +1121,8 @@ where
         match type_def {
             TypeDef::Composite(x) => {
                 if x.fields.len() == 1 {
-                    add_ty_as_regular::<E>(draft_registry, ty.to_owned(), id)?;
+                    add_ty_as_regular(draft_registry, ty.to_owned(), id)
+                        .map_err(MetaCutError::Registry)?;
                     id = x.fields[0].ty.id;
                     checker
                         .check_id(id)
@@ -1110,7 +1138,8 @@ where
                 }
             }
             TypeDef::Compact(x) => {
-                add_ty_as_regular::<E>(draft_registry, ty.to_owned(), id)?;
+                add_ty_as_regular(draft_registry, ty.to_owned(), id)
+                    .map_err(MetaCutError::Registry)?;
                 checker
                     .reject_compact()
                     .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
@@ -1140,7 +1169,7 @@ mod tests {
     #[test]
     fn sort_draft_registry() {
         let mut draft_registry = DraftRegistry::new();
-        add_as_enum::<()>(
+        add_as_enum(
             &mut draft_registry,
             &Path::<PortableForm> {
                 segments: vec!["test".to_string(), "Path".to_string()],
@@ -1154,7 +1183,7 @@ mod tests {
             144,
         )
         .unwrap();
-        add_as_enum::<()>(
+        add_as_enum(
             &mut draft_registry,
             &Path::<PortableForm> {
                 segments: vec!["test".to_string(), "Path".to_string()],
@@ -1168,7 +1197,7 @@ mod tests {
             144,
         )
         .unwrap();
-        add_as_enum::<()>(
+        add_as_enum(
             &mut draft_registry,
             &Path::<PortableForm> {
                 segments: vec!["test".to_string(), "Path".to_string()],
@@ -1289,52 +1318,46 @@ mod tests {
     #[test]
     fn keep_empty_enums_portable() {
         let portable_registry = PortableRegistry {
-            types: vec![
-                PortableType {
-                    id: 0,
-                    ty: Type {
-                        path: Path {
-                            segments: vec!["test".to_string(), "Path".to_string()]
-                        },
-                        type_params: Vec::new(),
-                        type_def: TypeDef::Variant(TypeDefVariant {
-                            variants: vec![]
-                        }),
-                        docs: vec!["important information".to_string(), "danger ahead".to_string()]
-                    }
-                }
-            ]
+            types: vec![PortableType {
+                id: 0,
+                ty: Type {
+                    path: Path {
+                        segments: vec!["test".to_string(), "Path".to_string()],
+                    },
+                    type_params: Vec::new(),
+                    type_def: TypeDef::Variant(TypeDefVariant { variants: vec![] }),
+                    docs: vec![
+                        "important information".to_string(),
+                        "danger ahead".to_string(),
+                    ],
+                },
+            }],
         };
-        let leaves = <PortableRegistry as HashableRegistry<()>>::merkle_leaves(&portable_registry).unwrap();
-        assert_eq!(
-            leaves.len(),
-            1,
-        );
+        let leaves =
+            <PortableRegistry as HashableRegistry<()>>::merkle_leaves(&portable_registry).unwrap();
+        assert_eq!(leaves.len(), 1,);
     }
 
     #[test]
     fn keep_empty_enums_short() {
         let short_registry = ShortRegistry {
-            types: vec![
-                PortableType {
-                    id: 15,
-                    ty: Type {
-                        path: Path {
-                            segments: vec!["test".to_string(), "Path".to_string()]
-                        },
-                        type_params: Vec::new(),
-                        type_def: TypeDef::Variant(TypeDefVariant {
-                            variants: vec![]
-                        }),
-                        docs: vec!["important information".to_string(), "danger ahead".to_string()]
-                    }
-                }
-            ]
+            types: vec![PortableType {
+                id: 15,
+                ty: Type {
+                    path: Path {
+                        segments: vec!["test".to_string(), "Path".to_string()],
+                    },
+                    type_params: Vec::new(),
+                    type_def: TypeDef::Variant(TypeDefVariant { variants: vec![] }),
+                    docs: vec![
+                        "important information".to_string(),
+                        "danger ahead".to_string(),
+                    ],
+                },
+            }],
         };
-        let leaves = <ShortRegistry as HashableRegistry<()>>::merkle_leaves(&short_registry).unwrap();
-        assert_eq!(
-            leaves.len(),
-            1,
-        );
+        let leaves =
+            <ShortRegistry as HashableRegistry<()>>::merkle_leaves(&short_registry).unwrap();
+        assert_eq!(leaves.len(), 1,);
     }
 }
