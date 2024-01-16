@@ -11,7 +11,7 @@ use substrate_parser::{
 
 use crate::{
     cut_metadata::{cut_metadata, cut_metadata_transaction_unmarked, ShortMetadata},
-    traits::{ExtendedMetadata, HashableMetadata},
+    traits::{Blake3Leaf, ExtendedMetadata, HashableMetadata},
 };
 
 fn metadata(filename: &str) -> RuntimeMetadataV14 {
@@ -122,24 +122,37 @@ fn specs_westend() -> ShortSpecs {
     }
 }
 
-fn compare_registry_hashes(short_metadata: &ShortMetadata, full_metadata: &RuntimeMetadataV14) {
+fn compare_registry_hashes(
+    short_metadata: &ShortMetadata<Blake3Leaf, ()>,
+    full_metadata: &RuntimeMetadataV14,
+) {
     let root_short_metadata =
-        <ShortMetadata as HashableMetadata<()>>::types_merkle_root(short_metadata).unwrap();
+        <ShortMetadata<Blake3Leaf, ()> as HashableMetadata<()>>::types_merkle_root(
+            short_metadata,
+            &mut (),
+        )
+        .unwrap();
     let root_full_metadata =
-        <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(full_metadata).unwrap();
+        <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(full_metadata, &mut ())
+            .unwrap();
     assert_eq!(root_short_metadata, root_full_metadata);
 }
 
 fn compare_digests(
-    short_metadata: &ShortMetadata,
+    short_metadata: &ShortMetadata<Blake3Leaf, ()>,
     full_metadata: &RuntimeMetadataV14,
     specs: &ShortSpecs,
 ) {
     let digest_short_metadata =
-        <ShortMetadata as ExtendedMetadata<()>>::digest(short_metadata).unwrap();
-    let digest_full_metadata =
-        <RuntimeMetadataV14 as HashableMetadata<()>>::digest_with_short_specs(full_metadata, specs)
+        <ShortMetadata<Blake3Leaf, ()> as ExtendedMetadata<()>>::digest(short_metadata, &mut ())
             .unwrap();
+    let digest_full_metadata =
+        <RuntimeMetadataV14 as HashableMetadata<()>>::digest_with_short_specs(
+            full_metadata,
+            specs,
+            &mut (),
+        )
+        .unwrap();
     assert_eq!(digest_short_metadata, digest_full_metadata);
 }
 
@@ -194,8 +207,9 @@ fn test_procedure(
         .parse_transaction(&data.as_ref(), &mut ())
         .unwrap()
         .card(
-            &<ShortMetadata as ExtendedMetadata<()>>::to_specs(&short_metadata).unwrap(),
-            &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
+            &<ShortMetadata<Blake3Leaf, ()> as ExtendedMetadata<()>>::to_specs(&short_metadata)
+                .unwrap(),
+            &<ShortMetadata<Blake3Leaf, ()> as AsMetadata<()>>::spec_name_version(&short_metadata)
                 .unwrap()
                 .spec_name,
         );
@@ -242,8 +256,9 @@ fn test_procedure_transaction_unmarked(
         .parse_transaction_unmarked(&data.as_ref(), &mut ())
         .unwrap()
         .card(
-            &<ShortMetadata as ExtendedMetadata<()>>::to_specs(&short_metadata).unwrap(),
-            &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
+            &<ShortMetadata<Blake3Leaf, ()> as ExtendedMetadata<()>>::to_specs(&short_metadata)
+                .unwrap(),
+            &<ShortMetadata<Blake3Leaf, ()> as AsMetadata<()>>::spec_name_version(&short_metadata)
                 .unwrap()
                 .spec_name,
         );

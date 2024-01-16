@@ -1,4 +1,6 @@
 //! Errors.
+#[cfg(any(feature = "merkle-lean", test))]
+use merkle_cbt_lean::ErrorMT;
 use substrate_parser::error::SignableError;
 
 use crate::std::string::String;
@@ -12,7 +14,8 @@ use std::{
 #[cfg(not(feature = "std"))]
 use core::fmt::{Display, Formatter, Result as FmtResult};
 
-use substrate_parser::traits::{AsMetadata, ExternalMemory};
+use external_memory_tools::ExternalMemory;
+use substrate_parser::traits::AsMetadata;
 
 /// Error in generating shortened metadata.
 #[derive(Debug, Eq, PartialEq)]
@@ -20,8 +23,12 @@ pub enum MetaCutError<E: ExternalMemory, M: AsMetadata<E>> {
     NoEntryLargerRegistry,
     Registry(RegistryCutError),
     Signable(SignableError<E, M>),
-    TreeCalculateProof,
-    TreeCalculateRoot,
+    #[cfg(any(feature = "merkle-lean", test))]
+    TreeCalculateProof(ErrorMT<E>),
+    #[cfg(any(feature = "merkle-lean", test))]
+    TreeCalculateRoot(ErrorMT<E>),
+    #[cfg(any(feature = "merkle-lean", test))]
+    TreeConstructProof(ErrorMT<E>),
 }
 
 /// Error in generating shortened registry.
@@ -36,8 +43,12 @@ impl<E: ExternalMemory, M: AsMetadata<E>> MetaCutError<E, M> {
             MetaCutError::NoEntryLargerRegistry => String::from("While forming metadata types registry with excluded types, found type that should exist in larger registry, but does not. This is code bug, please report it."),
             MetaCutError::Registry(registry_cut_error) => format!("{registry_cut_error}"),
             MetaCutError::Signable(signable_error) => format!("{signable_error}"),
-            MetaCutError::TreeCalculateProof => String::from("Unable to calculate proof for merkle tree"),
-            MetaCutError::TreeCalculateRoot => String::from("Unable to calculate root hash"),
+            #[cfg(any(feature = "merkle-lean", test))]
+            MetaCutError::TreeCalculateProof(error_merkle_tree) => format!("Unable to calculate proof for merkle tree. {error_merkle_tree}"),
+            #[cfg(any(feature = "merkle-lean", test))]
+            MetaCutError::TreeCalculateRoot(error_merkle_tree) => format!("Unable to calculate root hash. {error_merkle_tree}"),
+            #[cfg(any(feature = "merkle-lean", test))]
+            MetaCutError::TreeConstructProof(error_merkle_tree) => format!("Unable to construct proof with provided data. {error_merkle_tree}"),
         }
     }
 }
