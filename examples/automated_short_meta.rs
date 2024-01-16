@@ -1,16 +1,19 @@
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "merkle-standard", feature = "proof-gen"))]
 use frame_metadata::v14::RuntimeMetadataV14;
-#[cfg(feature = "std")]
+
+#[cfg(all(feature = "std", feature = "merkle-standard", feature = "proof-gen"))]
 use metadata_shortener::{
     cut_metadata::{cut_metadata, ShortMetadata},
-    traits::{ExtendedMetadata, HashableMetadata},
+    traits::{Blake3Leaf, ExtendedMetadata, HashableMetadata},
 };
-#[cfg(feature = "std")]
+
+#[cfg(all(feature = "std", feature = "merkle-standard", feature = "proof-gen"))]
 use parity_scale_codec::{Decode, Encode};
-#[cfg(feature = "std")]
+
+#[cfg(all(feature = "std", feature = "merkle-standard", feature = "proof-gen"))]
 use substrate_parser::ShortSpecs;
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "merkle-standard", feature = "proof-gen"))]
 fn main() {
     let meta_file = std::fs::read("for_tests/westend9430").unwrap();
     let meta = Vec::<u8>::decode(&mut &meta_file[..]).unwrap();
@@ -38,20 +41,27 @@ fn main() {
 
     // Calculate root for short metadata and full metadata. Only types part here. Part with specs must be mixed in later.
     let root_short_metadata =
-        <ShortMetadata as HashableMetadata<()>>::types_merkle_root(&short_metadata).unwrap();
+        <ShortMetadata<Blake3Leaf, ()> as HashableMetadata<()>>::types_merkle_root(
+            &short_metadata,
+            &mut (),
+        )
+        .unwrap();
     let root_full_metadata =
-        <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(&full_metadata).unwrap();
+        <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(&full_metadata, &mut ())
+            .unwrap();
 
     // Roots are equal.
     assert_eq!(root_short_metadata, root_full_metadata);
 
     // Calculate digests for short metadata and full metadata. Specs mixed in.
     let digest_short_metadata =
-        <ShortMetadata as ExtendedMetadata<()>>::digest(&short_metadata).unwrap();
+        <ShortMetadata<Blake3Leaf, ()> as ExtendedMetadata<()>>::digest(&short_metadata, &mut ())
+            .unwrap();
     let digest_full_metadata =
         <RuntimeMetadataV14 as HashableMetadata<()>>::digest_with_short_specs(
             &full_metadata,
             &specs_westend,
+            &mut (),
         )
         .unwrap();
 
@@ -59,7 +69,7 @@ fn main() {
     assert_eq!(digest_short_metadata, digest_full_metadata);
 }
 
-#[cfg(not(feature = "std"))]
+#[cfg(not(all(feature = "std", feature = "merkle-standard", feature = "proof-gen")))]
 fn main() {
-    panic!("Example is not intended for no-std.");
+    panic!("Examples should be run under std, with merkle-standard and proof-gen features both included.");
 }

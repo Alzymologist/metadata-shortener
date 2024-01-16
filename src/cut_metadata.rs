@@ -3,16 +3,33 @@ use crate::std::{borrow::ToOwned, string::String, vec::Vec};
 
 #[cfg(not(feature = "std"))]
 use core::any::TypeId;
+#[cfg(all(not(feature = "std"), any(feature = "merkle-lean", test)))]
+use core::marker::PhantomData;
+
 #[cfg(feature = "std")]
 use std::any::TypeId;
+#[cfg(all(feature = "std", any(feature = "merkle-lean", test)))]
+use std::marker::PhantomData;
+
+use external_memory_tools::{AddressableBuffer, ExternalMemory};
 
 use frame_metadata::v14::ExtrinsicMetadata;
-use merkle_cbt::CBMT;
+
+#[cfg(any(feature = "proof-gen", test))]
+use merkle_cbt_lean::Hasher;
+
+#[cfg(any(feature = "merkle-lean", test))]
+use merkle_cbt_lean::Leaf;
+
 use parity_scale_codec::{Decode, Encode};
+
 use scale_info::{
     form::PortableForm, interner::UntrackedSymbol, Field, Path, PortableType, Type, TypeDef,
     TypeDefBitSequence, TypeDefPrimitive, TypeDefVariant, Variant,
 };
+
+#[cfg(any(feature = "proof-gen", test))]
+use substrate_parser::ShortSpecs;
 use substrate_parser::{
     cards::Info,
     compacts::get_compact,
@@ -22,12 +39,17 @@ use substrate_parser::{
     error::{ParserError, SignableError},
     propagated::{Checker, Propagated, SpecialtySet},
     special_indicators::{Hint, SpecialtyTypeHinted, ENUM_INDEX_ENCODED_LEN},
-    traits::{AddressableBuffer, AsMetadata, ExternalMemory, ResolveType, SpecNameVersion},
-    MarkedData, ShortSpecs,
+    traits::{AsMetadata, ResolveType, SpecNameVersion},
+    MarkedData,
 };
 
 use crate::error::{MetaCutError, RegistryCutError};
-use crate::traits::{HashableMetadata, HashableRegistry, MergeHashes};
+
+#[cfg(any(feature = "proof-gen", test))]
+use crate::traits::{Blake3Hasher, HashableMetadata, HashableRegistry, MerkleProofMetadata};
+
+#[cfg(any(feature = "merkle-lean", test))]
+use crate::traits::LEN;
 
 /// Temporary registry.
 ///
@@ -554,13 +576,19 @@ where
 ///
 /// Contains all the data necessary to parse a signable transaction and to
 /// generate a metadata digest.
+#[cfg(any(feature = "merkle-lean", test))]
 #[repr(C)]
 #[derive(Debug, Decode, Encode)]
-pub struct ShortMetadata {
+pub struct ShortMetadata<L, E>
+where
+    L: Leaf<LEN, E>,
+    E: ExternalMemory,
+{
     pub short_registry: ShortRegistry,
     pub indices: Vec<u32>,
-    pub lemmas: Vec<[u8; 32]>,
+    pub lemmas: Vec<L>,
     pub metadata_descriptor: MetadataDescriptor,
+    ext_memory_type: PhantomData<E>,
 }
 
 /// Versioned metadata descriptor with non-registry entities necessary for
@@ -583,15 +611,17 @@ pub enum MetadataDescriptor {
 ///
 /// Transaction could be separated into call and extension as the call is
 /// prefixed with call length compact.
-pub fn cut_metadata<B, E, M>(
+#[cfg(any(feature = "proof-gen", test))]
+pub fn cut_metadata<B, E, L, M>(
     data: &B,
     ext_memory: &mut E,
     full_metadata: &M,
     short_specs: &ShortSpecs,
-) -> Result<ShortMetadata, MetaCutError<E, M>>
+) -> Result<ShortMetadata<L, E>, MetaCutError<E, M>>
 where
     B: AddressableBuffer<E>,
     E: ExternalMemory,
+    L: Leaf<LEN, E>,
     M: HashableMetadata<E>,
     <M as AsMetadata<E>>::TypeRegistry: HashableRegistry<E>,
 {
@@ -604,24 +634,27 @@ where
 
     let short_registry = draft_registry.finalize_to_short();
 
-    let leaves_short = <ShortRegistry as HashableRegistry<E>>::merkle_leaves(&short_registry)
-        .map_err(MetaCutError::Registry)?;
-    let leaves_long = full_metadata
+    let leaves_registry_short =
+        <ShortRegistry as HashableRegistry<E>>::merkle_leaves_source(&short_registry)
+            .map_err(MetaCutError::Registry)?;
+    let leaves_registry_long = full_metadata
         .types()
-        .merkle_leaves()
+        .merkle_leaves_source()
         .map_err(MetaCutError::Registry)?;
 
-    let mut indices: Vec<u32> = Vec::new();
-    for entry_short in leaves_short.iter() {
-        let index = leaves_long
-            .iter()
-            .position(|entry_long| entry_long == entry_short)
-            .ok_or(MetaCutError::NoEntryLargerRegistry)?;
-        indices.push(index as u32);
-    }
+    let leaves_short: Vec<[u8; LEN]> = leaves_registry_short
+        .types
+        .iter()
+        .map(|entry| Blake3Hasher::make(&entry.encode()))
+        .collect();
+    let leaves_long: Vec<[u8; LEN]> = leaves_registry_long
+        .types
+        .iter()
+        .map(|entry| Blake3Hasher::make(&entry.encode()))
+        .collect();
 
-    let proof = CBMT::<[u8; 32], MergeHashes>::build_merkle_proof(&leaves_long, &indices)
-        .ok_or(MetaCutError::TreeCalculateProof)?;
+    let proof = MerkleProofMetadata::for_leaves_subset(leaves_long, &leaves_short, ext_memory)
+        .map_err(MetaCutError::TreeCalculateProof)?;
 
     let metadata_descriptor = MetadataDescriptor::V1 {
         extrinsic: full_metadata
@@ -637,9 +670,10 @@ where
 
     Ok(ShortMetadata {
         short_registry,
-        indices: proof.indices().to_owned(),
-        lemmas: proof.lemmas().to_owned(),
+        indices: proof.indices(),
+        lemmas: proof.lemmas,
         metadata_descriptor,
+        ext_memory_type: PhantomData,
     })
 }
 
@@ -647,15 +681,17 @@ where
 ///
 /// Unmarked transaction is not prefixed with call length compact, and thus call
 /// and extensions could not be separated.
-pub fn cut_metadata_transaction_unmarked<B, E, M>(
+#[cfg(any(feature = "proof-gen", test))]
+pub fn cut_metadata_transaction_unmarked<B, E, L, M>(
     data: &B,
     ext_memory: &mut E,
     full_metadata: &M,
     short_specs: &ShortSpecs,
-) -> Result<ShortMetadata, MetaCutError<E, M>>
+) -> Result<ShortMetadata<L, E>, MetaCutError<E, M>>
 where
     B: AddressableBuffer<E>,
     E: ExternalMemory,
+    L: Leaf<LEN, E>,
     M: HashableMetadata<E>,
     <M as AsMetadata<E>>::TypeRegistry: HashableRegistry<E>,
 {
@@ -679,24 +715,27 @@ where
 
     let short_registry = draft_registry.finalize_to_short();
 
-    let leaves_short = <ShortRegistry as HashableRegistry<E>>::merkle_leaves(&short_registry)
-        .map_err(MetaCutError::Registry)?;
-    let leaves_long = full_metadata
+    let leaves_registry_short =
+        <ShortRegistry as HashableRegistry<E>>::merkle_leaves_source(&short_registry)
+            .map_err(MetaCutError::Registry)?;
+    let leaves_registry_long = full_metadata
         .types()
-        .merkle_leaves()
+        .merkle_leaves_source()
         .map_err(MetaCutError::Registry)?;
 
-    let mut indices: Vec<u32> = Vec::new();
-    for entry_short in leaves_short.iter() {
-        let index = leaves_long
-            .iter()
-            .position(|entry_long| entry_long == entry_short)
-            .ok_or(MetaCutError::NoEntryLargerRegistry)?;
-        indices.push(index as u32);
-    }
+    let leaves_short: Vec<[u8; LEN]> = leaves_registry_short
+        .types
+        .iter()
+        .map(|entry| Blake3Hasher::make(&entry.encode()))
+        .collect();
+    let leaves_long: Vec<[u8; LEN]> = leaves_registry_long
+        .types
+        .iter()
+        .map(|entry| Blake3Hasher::make(&entry.encode()))
+        .collect();
 
-    let proof = CBMT::<[u8; 32], MergeHashes>::build_merkle_proof(&leaves_long, &indices)
-        .ok_or(MetaCutError::TreeCalculateProof)?;
+    let proof = MerkleProofMetadata::for_leaves_subset(leaves_long, &leaves_short, ext_memory)
+        .map_err(MetaCutError::TreeCalculateProof)?;
 
     let metadata_descriptor = MetadataDescriptor::V1 {
         extrinsic: full_metadata
@@ -712,9 +751,10 @@ where
 
     Ok(ShortMetadata {
         short_registry,
-        indices: proof.indices().to_owned(),
-        lemmas: proof.lemmas().to_owned(),
+        indices: proof.indices(),
+        lemmas: proof.lemmas,
         metadata_descriptor,
+        ext_memory_type: PhantomData,
     })
 }
 
@@ -1333,9 +1373,10 @@ mod tests {
                 },
             }],
         };
-        let leaves =
-            <PortableRegistry as HashableRegistry<()>>::merkle_leaves(&portable_registry).unwrap();
-        assert_eq!(leaves.len(), 1,);
+        let leaves_registry =
+            <PortableRegistry as HashableRegistry<()>>::merkle_leaves_source(&portable_registry)
+                .unwrap();
+        assert_eq!(leaves_registry.types.len(), 1,);
     }
 
     #[test]
@@ -1356,8 +1397,8 @@ mod tests {
                 },
             }],
         };
-        let leaves =
-            <ShortRegistry as HashableRegistry<()>>::merkle_leaves(&short_registry).unwrap();
-        assert_eq!(leaves.len(), 1,);
+        let leaves_registry =
+            <ShortRegistry as HashableRegistry<()>>::merkle_leaves_source(&short_registry).unwrap();
+        assert_eq!(leaves_registry.types.len(), 1,);
     }
 }

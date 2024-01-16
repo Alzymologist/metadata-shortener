@@ -59,43 +59,43 @@
 //! SCALE-encoded `ShortMetadata` structure (as received by the cold side) is
 //! following:
 //!
-//! - `ShortRegistry`:  
+//! - `ShortRegistry`:
 //!   - [Compact](parity_scale_codec::Compact) of the number of types described
-//! in `ShortRegistry`  
+//! in `ShortRegistry`
 //!   - For each of the given number of types:
 //!     - compact type `id` (same number as in original full metadata, for type
 //! resolving)
 //!     - SCALE-encoded [`Type`](scale_info::Type), encoded size is not known
-//! before decoding  
-//! - Indices for Merkle tree leaves derived from types in `ShortRegistry`:  
+//! before decoding
+//! - Indices for Merkle tree leaves derived from types in `ShortRegistry`:
 //!   - Compact of the number of indices for Merkle tree leaves derived from
-//! types in `ShortRegistry`  
-//!   - Given number of SCALE-encoded `u32` indices, 4 bytes each  
-//! - Merkle tree lemmas:  
-//!   - Compact of the number of lemmas for Merkle tree  
-//!   - Given number of lemmas, 32 bytes each  
-//! - SCALE-encoded [`MetadataDescriptor`]:  
+//! types in `ShortRegistry`
+//!   - Given number of SCALE-encoded `u32` indices, 4 bytes each
+//! - Merkle tree lemmas:
+//!   - Compact of the number of lemmas for Merkle tree
+//!   - Given number of lemmas, 32 bytes each
+//! - SCALE-encoded [`MetadataDescriptor`]:
 //!   - 1-byte version of [`MetadataDescriptor`] (currently the only variant is
-//! `0`). For version `0`:  
+//! `0`). For version `0`:
 //!     - SCALE-encoded
 //! [`ExtrinsicMetadata`](frame_metadata::v14::ExtrinsicMetadata), encoded
-//! size is not known before decoding  
+//! size is not known before decoding
 //!     - Compact length of the printed spec version followed by corresponding
-//! number of utf8 bytes  
+//! number of utf8 bytes
 //!     - Compact length of the chain spec name followed by corresponding number
-//! of utf8 bytes  
-//!     - SCALE-encoded `u16` base58 prefix value for the chain, 2 bytes  
-//!     - SCALE-encoded `u8` decimals value for the chain, 1 byte  
+//! of utf8 bytes
+//!     - SCALE-encoded `u16` base58 prefix value for the chain, 2 bytes
+//!     - SCALE-encoded `u8` decimals value for the chain, 1 byte
 //!     - Compact length of the unit value for the chain followed by
-//! corresponding number of utf8 bytes  
+//! corresponding number of utf8 bytes
 //!
 //! # Example
 //! ```
-//! # #[cfg(feature = "std")]
+//! # #[cfg(all(feature = "std", feature = "merkle-standard", feature = "proof-gen"))]
 //! # {
 //! use frame_metadata::v14::RuntimeMetadataV14;
 //! use metadata_shortener::{
-//!     traits::ExtendedMetadata,
+//!     traits::{Blake3Leaf, ExtendedMetadata},
 //!     cut_metadata, ShortMetadata, ShortSpecs,
 //! };
 //! use parity_scale_codec::{Decode, Encode};
@@ -145,9 +145,9 @@
 //! )
 //! .unwrap()
 //! .card(
-//!     &<ShortMetadata as ExtendedMetadata<()>>::to_specs(&short_metadata)
+//!     &<ShortMetadata<Blake3Leaf, ()> as ExtendedMetadata<()>>::to_specs(&short_metadata)
 //!         .unwrap(),
-//!     &<ShortMetadata as AsMetadata<()>>::spec_name_version(&short_metadata)
+//!     &<ShortMetadata<Blake3Leaf, ()> as AsMetadata<()>>::spec_name_version(&short_metadata)
 //!         .unwrap()
 //!         .spec_name,
 //! );
@@ -269,12 +269,12 @@
 //!
 //! # Example
 //! ```
-//! # #[cfg(feature = "std")]
+//! # #[cfg(all(feature = "std", feature = "merkle-standard", feature = "proof-gen"))]
 //! # {
 //! use frame_metadata::v14::RuntimeMetadataV14;
 //! use metadata_shortener::{
 //!     cut_metadata,
-//!     traits::{ExtendedMetadata, HashableMetadata},
+//!     traits::{Blake3Leaf, ExtendedMetadata, HashableMetadata},
 //!     MetadataDescriptor, ShortMetadata, ShortSpecs,
 //! };
 //! use parity_scale_codec::Decode;
@@ -298,6 +298,7 @@
 //!     <RuntimeMetadataV14 as HashableMetadata<()>>::digest_with_short_specs(
 //!         &full_metadata,
 //!         &specs_westend,
+//!         &mut (),
 //!     )
 //!     .unwrap();
 //!
@@ -310,19 +311,24 @@
 //!
 //! // Short metadata digest:
 //! let digest_short_metadata =
-//!     <ShortMetadata as ExtendedMetadata<()>>::digest(&short_metadata).unwrap();
+//!     <ShortMetadata<Blake3Leaf, ()> as ExtendedMetadata<()>>::digest(
+//!         &short_metadata,
+//!         &mut ()
+//!     ).unwrap();
 //!
 //! // Check that digest values match:
 //! assert_eq!(digest_short_metadata, digest_full_metadata);
 //! # }
 //! ```
 //!
+
 #![no_std]
 #![deny(unused_crate_dependencies)]
 
 pub mod cut_metadata;
 pub mod error;
 #[cfg(test)]
+#[cfg(any(feature = "merkle-standard", feature = "merkle-lean", test))]
 mod tests;
 pub mod traits;
 
@@ -334,8 +340,10 @@ extern crate std;
 #[macro_use]
 extern crate alloc as std;
 
-pub use crate::cut_metadata::{
-    cut_metadata, cut_metadata_transaction_unmarked, MetadataDescriptor, ShortMetadata,
-    ShortRegistry,
-};
+#[cfg(feature = "merkle-lean")]
+pub use crate::cut_metadata::ShortMetadata;
+#[cfg(feature = "proof-gen")]
+pub use crate::cut_metadata::{cut_metadata, cut_metadata_transaction_unmarked};
+pub use crate::cut_metadata::{MetadataDescriptor, ShortRegistry};
+
 pub use substrate_parser::ShortSpecs;
