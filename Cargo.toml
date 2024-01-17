@@ -9,7 +9,7 @@ repository = "https://github.com/Alzymologist/metadata-shortener"
 homepage = "https://github.com/Alzymologist/metadata-shortener"
 documentation = "https://docs.rs/metadata-shortener/"
 keywords = ["substrate", "frame-metadata"]
-exclude = ["/.github"]
+exclude = ["/.github", "for_tests", "examples"]
 
 [dependencies]
 blake3 = {version = "1.5.0", default-features = false, optional = true}
