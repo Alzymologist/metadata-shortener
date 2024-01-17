@@ -1,24 +1,31 @@
 [package]
+description = "Reference implementation for metadata shortener for Substrate chains, RFC46"
 license = "GPL-3.0-or-later"
 name = "metadata-shortener"
 version = "0.1.0"
+authors = ["Alexander Slesarev <slesarew@gmail.com>", "Vera Abramova <abramova.vera@gmail.com>"]
 edition = "2021"
+repository = "https://github.com/Alzymologist/metadata-shortener"
+homepage = "https://github.com/Alzymologist/metadata-shortener"
+documentation = "https://docs.rs/metadata-shortener/"
+keywords = ["substrate", "frame-metadata"]
+exclude = ["/.github"]
 
 [dependencies]
 blake3 = {version = "1.5.0", default-features = false, optional = true}
-external-memory-tools = {git = "https://github.com/Alzymologist/external-memory-tools", default-features = false}
+external-memory-tools = {version = "0.1.0", default-features = false}
 frame-metadata = {version = "16.0.0", default-features = false, features = ["current", "decode"]}
 merkle-cbt = {version = "0.3.2", default-features = false, optional = true}
-merkle-cbt-lean = {git = "https://github.com/Alzymologist/merkle-cbt-lean", default-features = false, optional = true}
+merkle-cbt-lean = {version = "0.1.0", default-features = false, optional = true}
 parity-scale-codec = {version = "3.6.4", default-features = false, features = ["derive", "bit-vec"]}
 scale-info = {version = "2.9.0", default-features = false}
-substrate_parser = {git = "https://github.com/Alzymologist/substrate-parser", default-features = false, features = ["embed-display"]}
+substrate_parser = {version = "0.4.0", default-features = false, features = ["embed-display"]}
 
 [dev-dependencies]
 blake3 = {version = "1.5.0", default-features = false}
 hex = "0.4.3"
 merkle-cbt = {version = "0.3.2", default-features = false}
-merkle-cbt-lean = {git = "https://github.com/Alzymologist/merkle-cbt-lean", default-features = false, features = ["proof-gen"]}
+merkle-cbt-lean = {version = "0.1.0", default-features = false, features = ["proof-gen"]}
 primitive-types = "0.12.1"
 
 [features]
