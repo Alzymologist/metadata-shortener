@@ -9,10 +9,7 @@ use external_memory_tools::AddressableBuffer;
 use external_memory_tools::ExternalMemory;
 
 #[cfg(any(feature = "merkle-standard", test))]
-use frame_metadata::v14::RuntimeMetadataV14;
-
-#[cfg(any(feature = "merkle-lean", test))]
-use frame_metadata::v14::ExtrinsicMetadata;
+use frame_metadata::{v14::RuntimeMetadataV14, v15::RuntimeMetadataV15};
 
 #[cfg(any(feature = "merkle-standard", test))]
 use merkle_cbt::{merkle_tree::Merge, CBMT};
@@ -27,8 +24,8 @@ use scale_info::PortableType;
 use scale_info::{form::PortableForm, PortableRegistry, Type, TypeDef};
 
 #[cfg(any(feature = "merkle-lean", test))]
-use substrate_parser::traits::SpecNameVersion;
-use substrate_parser::{error::ParserError, traits::ResolveType};
+use substrate_parser::traits::{ExtrinsicTypeParams, SignedExtensionMetadata, SpecNameVersion};
+use substrate_parser::{error::RegistryError, traits::ResolveType};
 #[cfg(any(feature = "merkle-lean", feature = "merkle-standard", test))]
 use substrate_parser::{
     error::SignableError, parse_transaction, parse_transaction_unmarked, traits::AsMetadata,
@@ -117,9 +114,19 @@ where
         ext_memory: &mut E,
     ) -> Result<[u8; LEN], MetaCutError<E, Self>> {
         let types_merkle_root = self.types_merkle_root(ext_memory)?;
+        let extrinsic_type_params = self
+            .extrinsic_type_params()
+            .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?;
         let metadata_descriptor = MetadataDescriptor::V1 {
-            extrinsic: self
-                .extrinsic()
+            extrinsic_version: self
+                .extrinsic_version()
+                .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
+            address_ty: extrinsic_type_params.address_ty,
+            call_ty: extrinsic_type_params.call_ty,
+            signature_ty: extrinsic_type_params.signature_ty,
+            extra_ty: extrinsic_type_params.extra_ty,
+            signed_extensions: self
+                .signed_extensions()
                 .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
             spec_name_version: self
                 .spec_name_version()
@@ -275,13 +282,13 @@ impl<E: ExternalMemory> ResolveType<E> for ShortRegistry {
         &self,
         id: u32,
         _ext_memory: &mut E,
-    ) -> Result<Type<PortableForm>, ParserError<E>> {
+    ) -> Result<Type<PortableForm>, RegistryError> {
         for short_registry_entry in self.types.iter() {
             if short_registry_entry.id == id {
                 return Ok(short_registry_entry.ty.to_owned());
             }
         }
-        Err(ParserError::V14TypeNotResolved { id })
+        Err(RegistryError::TypeNotResolved { id })
     }
 }
 
@@ -303,7 +310,12 @@ where
         match &self.metadata_descriptor {
             MetadataDescriptor::V0 => Err(MetadataDescriptorError::DescriptorVersionIncompatible),
             MetadataDescriptor::V1 {
-                extrinsic: _,
+                extrinsic_version: _,
+                address_ty: _,
+                call_ty: _,
+                signature_ty: _,
+                extra_ty: _,
+                signed_extensions: _,
                 spec_name_version,
                 base58prefix: _,
                 decimals: _,
@@ -312,16 +324,62 @@ where
         }
     }
 
-    fn extrinsic(&self) -> Result<ExtrinsicMetadata<PortableForm>, Self::MetaStructureError> {
+    fn extrinsic_type_params(&self) -> Result<ExtrinsicTypeParams, Self::MetaStructureError> {
         match &self.metadata_descriptor {
             MetadataDescriptor::V0 => Err(MetadataDescriptorError::DescriptorVersionIncompatible),
             MetadataDescriptor::V1 {
-                extrinsic,
+                extrinsic_version: _,
+                address_ty,
+                call_ty,
+                signature_ty,
+                extra_ty,
+                signed_extensions: _,
                 spec_name_version: _,
                 base58prefix: _,
                 decimals: _,
                 unit: _,
-            } => Ok(extrinsic.to_owned()),
+            } => Ok(ExtrinsicTypeParams {
+                address_ty: *address_ty,
+                call_ty: *call_ty,
+                signature_ty: *signature_ty,
+                extra_ty: *extra_ty,
+            }),
+        }
+    }
+
+    fn extrinsic_version(&self) -> Result<u8, Self::MetaStructureError> {
+        match &self.metadata_descriptor {
+            MetadataDescriptor::V0 => Err(MetadataDescriptorError::DescriptorVersionIncompatible),
+            MetadataDescriptor::V1 {
+                extrinsic_version,
+                address_ty: _,
+                call_ty: _,
+                signature_ty: _,
+                extra_ty: _,
+                signed_extensions: _,
+                spec_name_version: _,
+                base58prefix: _,
+                decimals: _,
+                unit: _,
+            } => Ok(*extrinsic_version),
+        }
+    }
+
+    fn signed_extensions(&self) -> Result<Vec<SignedExtensionMetadata>, Self::MetaStructureError> {
+        match &self.metadata_descriptor {
+            MetadataDescriptor::V0 => Err(MetadataDescriptorError::DescriptorVersionIncompatible),
+            MetadataDescriptor::V1 {
+                extrinsic_version: _,
+                address_ty: _,
+                call_ty: _,
+                signature_ty: _,
+                extra_ty: _,
+                signed_extensions,
+                spec_name_version: _,
+                base58prefix: _,
+                decimals: _,
+                unit: _,
+            } => Ok(signed_extensions.to_owned()),
         }
     }
 }
@@ -366,7 +424,12 @@ where
         match &self.metadata_descriptor {
             MetadataDescriptor::V0 => Err(MetadataDescriptorError::DescriptorVersionIncompatible),
             MetadataDescriptor::V1 {
-                extrinsic: _,
+                extrinsic_version: _,
+                address_ty: _,
+                call_ty: _,
+                signature_ty: _,
+                extra_ty: _,
+                signed_extensions: _,
                 spec_name_version: _,
                 base58prefix,
                 decimals,
@@ -381,19 +444,28 @@ where
 }
 
 #[cfg(any(feature = "merkle-standard", test))]
-impl<E: ExternalMemory> HashableMetadata<E> for RuntimeMetadataV14 {
-    fn types_merkle_root(
-        &self,
-        _ext_memory: &mut E,
-    ) -> Result<[u8; LEN], MetaCutError<E, RuntimeMetadataV14>> {
-        let leaves_registry =
-            <PortableRegistry as HashableRegistry<E>>::merkle_leaves_source(&self.types)
-                .map_err(MetaCutError::Registry)?;
-        let leaves: Vec<[u8; LEN]> = leaves_registry
-            .types
-            .iter()
-            .map(blake3_leaf::<PortableType>)
-            .collect();
-        Ok(CBMT::<[u8; LEN], Blake3Hasher>::build_merkle_root(&leaves))
+macro_rules! impl_hashable_metadata {
+    ($($ty: ty), *) => {
+        $(
+            impl<E: ExternalMemory> HashableMetadata<E> for $ty {
+                fn types_merkle_root(
+                    &self,
+                    _ext_memory: &mut E,
+                ) -> Result<[u8; LEN], MetaCutError<E, $ty>> {
+                    let leaves_registry =
+                        <PortableRegistry as HashableRegistry<E>>::merkle_leaves_source(&self.types)
+                            .map_err(MetaCutError::Registry)?;
+                    let leaves: Vec<[u8; LEN]> = leaves_registry
+                        .types
+                        .iter()
+                        .map(blake3_leaf::<PortableType>)
+                        .collect();
+                    Ok(CBMT::<[u8; LEN], Blake3Hasher>::build_merkle_root(&leaves))
+                }
+            }
+        )*
     }
 }
+
+#[cfg(any(feature = "merkle-standard", test))]
+impl_hashable_metadata!(RuntimeMetadataV14, RuntimeMetadataV15);

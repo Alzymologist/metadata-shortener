@@ -13,8 +13,6 @@ use std::marker::PhantomData;
 
 use external_memory_tools::{AddressableBuffer, ExternalMemory};
 
-use frame_metadata::v14::ExtrinsicMetadata;
-
 #[cfg(any(feature = "proof-gen", test))]
 use merkle_cbt_lean::Hasher;
 
@@ -33,13 +31,11 @@ use substrate_parser::ShortSpecs;
 use substrate_parser::{
     cards::Info,
     compacts::get_compact,
-    decoding_sci::{
-        decode_type_def_primitive, pick_variant, BitVecPositions, ResolvedTy, Ty, CALL_INDICATOR,
-    },
-    error::{ParserError, SignableError},
+    decoding_sci::{decode_type_def_primitive, pick_variant, BitVecPositions, ResolvedTy, Ty},
+    error::{ParserError, RegistryError, SignableError},
     propagated::{Checker, Propagated, SpecialtySet},
     special_indicators::{Hint, SpecialtyTypeHinted, ENUM_INDEX_ENCODED_LEN},
-    traits::{AsMetadata, ResolveType, SpecNameVersion},
+    traits::{AsMetadata, ResolveType, SignedExtensionMetadata, SpecNameVersion},
     MarkedData,
 };
 
@@ -358,10 +354,12 @@ where
     E: ExternalMemory,
     M: AsMetadata<E>,
 {
-    let all_calls_ty = all_calls_ty::<E, M>(ext_memory, full_metadata, draft_registry)?;
+    let extrinsic_type_params = full_metadata
+        .extrinsic_type_params()
+        .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?;
 
     pass_type::<B, E, M>(
-        &Ty::Symbol(&all_calls_ty),
+        &Ty::Symbol(&extrinsic_type_params.call_ty),
         data,
         ext_memory,
         position,
@@ -369,132 +367,6 @@ where
         Propagated::new(),
         draft_registry,
     )
-}
-
-/// Find type describing all calls, update `DraftRegistry` in the process.
-///
-/// Type provided in `ExtrinsicMetadata` for unchecked extrinsic is expected to
-/// resolve into type with known type path namespace
-/// [`UNCHECKED_EXTRINSIC_NAMESPACE`](substrate_parser::special_indicators::UNCHECKED_EXTRINSIC_NAMESPACE)
-/// and known type path ident
-/// [`UNCHECKED_EXTRINSIC_IDENT`](substrate_parser::special_indicators::UNCHECKED_EXTRINSIC_IDENT).
-///
-/// Resulting type is expected to be an opaque `Vec<u8>` (or a composite with a
-/// single `Vec<u8>` field), and have `Call` parameter (distinguished by a known
-/// [`CALL_INDICATOR`]).
-///
-/// The type of this `Call` parameter is used to decode calls.
-///
-/// `DraftRegistry` is updated with necessary types used when searching for a
-/// type, so that the procedure can be repeated with shortened metadata as well.
-pub fn all_calls_ty<E, M>(
-    ext_memory: &mut E,
-    full_metadata: &M,
-    draft_registry: &mut DraftRegistry,
-) -> Result<UntrackedSymbol<TypeId>, MetaCutError<E, M>>
-where
-    E: ExternalMemory,
-    M: AsMetadata<E>,
-{
-    let extrinsic = full_metadata
-        .extrinsic()
-        .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?;
-    let extrinsic_ty = extrinsic.ty;
-    let full_metadata_types = full_metadata.types();
-
-    let husked_extrinsic_ty = husk_type_no_info::<E, M>(
-        &extrinsic_ty,
-        &full_metadata_types,
-        ext_memory,
-        Checker::new(),
-        draft_registry,
-    )?;
-
-    // check here that the underlying type is really `Vec<u8>`
-    let type_params = match husked_extrinsic_ty.ty.type_def {
-        TypeDef::Sequence(ref s) => {
-            let element_ty_id = s.type_param.id;
-            let element_ty = full_metadata_types
-                .resolve_ty(element_ty_id, ext_memory)
-                .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-            if let TypeDef::Primitive(TypeDefPrimitive::U8) = element_ty.type_def {
-                add_ty_as_regular(draft_registry, element_ty, element_ty_id)
-                    .map_err(MetaCutError::Registry)?;
-                husked_extrinsic_ty.ty.type_params.to_owned()
-            } else {
-                return Err(MetaCutError::Signable(SignableError::Parsing(
-                    ParserError::UnexpectedExtrinsicType {
-                        extrinsic_ty_id: husked_extrinsic_ty.id,
-                    },
-                )));
-            }
-        }
-        TypeDef::Composite(ref c) => {
-            if c.fields.len() != 1 {
-                return Err(MetaCutError::Signable(SignableError::Parsing(
-                    ParserError::UnexpectedExtrinsicType {
-                        extrinsic_ty_id: husked_extrinsic_ty.id,
-                    },
-                )));
-            } else {
-                let field_ty_id = c.fields[0].ty.id;
-                let field_ty = full_metadata_types
-                    .resolve_ty(field_ty_id, ext_memory)
-                    .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-                match field_ty.type_def {
-                    TypeDef::Sequence(ref s) => {
-                        let element_ty_id = s.type_param.id;
-                        let element_ty = full_metadata_types
-                            .resolve_ty(element_ty_id, ext_memory)
-                            .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-                        if let TypeDef::Primitive(TypeDefPrimitive::U8) = element_ty.type_def {
-                            add_ty_as_regular(draft_registry, field_ty, field_ty_id)
-                                .map_err(MetaCutError::Registry)?;
-                            husked_extrinsic_ty.ty.type_params.to_owned()
-                        } else {
-                            return Err(MetaCutError::Signable(SignableError::Parsing(
-                                ParserError::UnexpectedExtrinsicType {
-                                    extrinsic_ty_id: husked_extrinsic_ty.id,
-                                },
-                            )));
-                        }
-                    }
-                    _ => {
-                        return Err(MetaCutError::Signable(SignableError::Parsing(
-                            ParserError::UnexpectedExtrinsicType {
-                                extrinsic_ty_id: husked_extrinsic_ty.id,
-                            },
-                        )))
-                    }
-                }
-            }
-        }
-        _ => {
-            return Err(MetaCutError::Signable(SignableError::Parsing(
-                ParserError::UnexpectedExtrinsicType {
-                    extrinsic_ty_id: husked_extrinsic_ty.id,
-                },
-            )))
-        }
-    };
-    add_ty_as_regular(
-        draft_registry,
-        husked_extrinsic_ty.ty,
-        husked_extrinsic_ty.id,
-    )
-    .map_err(MetaCutError::Registry)?;
-
-    let mut found_all_calls_ty = None;
-
-    for param in type_params.iter() {
-        if param.name == CALL_INDICATOR {
-            found_all_calls_ty = param.ty
-        }
-    }
-
-    found_all_calls_ty.ok_or(MetaCutError::Signable(SignableError::Parsing(
-        ParserError::ExtrinsicNoCallParam,
-    )))
 }
 
 /// Update [`DraftRegistry`] with types needed to parse extensions of a marked
@@ -537,10 +409,10 @@ where
     M: AsMetadata<E>,
 {
     let full_metadata_types = full_metadata.types();
-    let extrinsic = full_metadata
-        .extrinsic()
+    let signed_extensions = full_metadata
+        .signed_extensions()
         .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?;
-    for signed_extensions_metadata in extrinsic.signed_extensions.iter() {
+    for signed_extensions_metadata in signed_extensions.iter() {
         pass_type::<B, E, M>(
             &Ty::Symbol(&signed_extensions_metadata.ty),
             data,
@@ -551,7 +423,7 @@ where
             draft_registry,
         )?;
     }
-    for signed_extensions_metadata in extrinsic.signed_extensions.iter() {
+    for signed_extensions_metadata in signed_extensions.iter() {
         pass_type::<B, E, M>(
             &Ty::Symbol(&signed_extensions_metadata.additional_signed),
             data,
@@ -599,7 +471,12 @@ where
 pub enum MetadataDescriptor {
     V0,
     V1 {
-        extrinsic: ExtrinsicMetadata<PortableForm>,
+        extrinsic_version: u8,
+        address_ty: UntrackedSymbol<TypeId>,
+        call_ty: UntrackedSymbol<TypeId>,
+        signature_ty: UntrackedSymbol<TypeId>,
+        extra_ty: UntrackedSymbol<TypeId>,
+        signed_extensions: Vec<SignedExtensionMetadata>,
         spec_name_version: SpecNameVersion,
         base58prefix: u16,
         decimals: u8,
@@ -656,9 +533,20 @@ where
     let proof = MerkleProofMetadata::for_leaves_subset(leaves_long, &leaves_short, ext_memory)
         .map_err(MetaCutError::TreeCalculateProof)?;
 
+    let extrinsic_type_params = full_metadata
+        .extrinsic_type_params()
+        .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?;
+
     let metadata_descriptor = MetadataDescriptor::V1 {
-        extrinsic: full_metadata
-            .extrinsic()
+        extrinsic_version: full_metadata
+            .extrinsic_version()
+            .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
+        address_ty: extrinsic_type_params.address_ty,
+        call_ty: extrinsic_type_params.call_ty,
+        signature_ty: extrinsic_type_params.signature_ty,
+        extra_ty: extrinsic_type_params.extra_ty,
+        signed_extensions: full_metadata
+            .signed_extensions()
             .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
         spec_name_version: full_metadata
             .spec_name_version()
@@ -737,9 +625,20 @@ where
     let proof = MerkleProofMetadata::for_leaves_subset(leaves_long, &leaves_short, ext_memory)
         .map_err(MetaCutError::TreeCalculateProof)?;
 
+    let extrinsic_type_params = full_metadata
+        .extrinsic_type_params()
+        .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?;
+
     let metadata_descriptor = MetadataDescriptor::V1 {
-        extrinsic: full_metadata
-            .extrinsic()
+        extrinsic_version: full_metadata
+            .extrinsic_version()
+            .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
+        address_ty: extrinsic_type_params.address_ty,
+        call_ty: extrinsic_type_params.call_ty,
+        signature_ty: extrinsic_type_params.signature_ty,
+        extra_ty: extrinsic_type_params.extra_ty,
+        signed_extensions: full_metadata
+            .signed_extensions()
             .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
         spec_name_version: full_metadata
             .spec_name_version()
@@ -776,9 +675,9 @@ where
     let (ty, id) = match ty_input {
         Ty::Resolved(resolved_ty) => (resolved_ty.ty.to_owned(), resolved_ty.id),
         Ty::Symbol(ty_symbol) => (
-            registry
-                .resolve_ty(ty_symbol.id, ext_memory)
-                .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?,
+            registry.resolve_ty(ty_symbol.id, ext_memory).map_err(|e| {
+                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+            })?,
             ty_symbol.id,
         ),
     };
@@ -800,9 +699,9 @@ where
             add_ty_as_regular(draft_registry, ty.to_owned(), id).map_err(MetaCutError::Registry)
         }
         TypeDef::Variant(x) => {
-            propagated
-                .reject_compact()
-                .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+            propagated.reject_compact().map_err(|e| {
+                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+            })?;
             if !x.variants.is_empty() {
                 pass_variant::<B, E, M>(
                     &x.variants,
@@ -849,16 +748,16 @@ where
         }
         TypeDef::Tuple(x) => {
             if x.fields.len() > 1 {
-                propagated
-                    .reject_compact()
-                    .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+                propagated.reject_compact().map_err(|e| {
+                    MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                })?;
                 propagated.forget_hint();
             }
             for inner_ty_symbol in x.fields.iter() {
                 let id = inner_ty_symbol.id;
-                let ty = registry
-                    .resolve_ty(id, ext_memory)
-                    .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+                let ty = registry.resolve_ty(id, ext_memory).map_err(|e| {
+                    MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                })?;
                 pass_type::<B, E, M>(
                     &Ty::Resolved(ResolvedTy {
                         ty: ty.to_owned(),
@@ -868,8 +767,9 @@ where
                     ext_memory,
                     position,
                     registry,
-                    Propagated::for_ty(&propagated.checker, &ty, id)
-                        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?,
+                    Propagated::for_ty(&propagated.checker, &ty, id).map_err(|e| {
+                        MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                    })?,
                     draft_registry,
                 )?;
             }
@@ -887,14 +787,13 @@ where
             add_ty_as_regular(draft_registry, ty, id).map_err(MetaCutError::Registry)
         }
         TypeDef::Compact(x) => {
-            propagated
-                .reject_compact()
-                .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+            propagated.reject_compact().map_err(|e| {
+                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+            })?;
             propagated.checker.specialty_set.compact_at = Some(id);
-            propagated
-                .checker
-                .check_id(x.type_param.id)
-                .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+            propagated.checker.check_id(x.type_param.id).map_err(|e| {
+                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+            })?;
             pass_type::<B, E, M>(
                 &Ty::Symbol(&x.type_param),
                 data,
@@ -907,9 +806,9 @@ where
             add_ty_as_regular(draft_registry, ty, id).map_err(MetaCutError::Registry)
         }
         TypeDef::BitSequence(x) => {
-            propagated
-                .reject_compact()
-                .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+            propagated.reject_compact().map_err(|e| {
+                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+            })?;
             pass_type_def_bit_sequence::<B, E, M>(
                 x,
                 id,
@@ -943,9 +842,9 @@ where
         // Only single-field structs can be processed as a compact.
         // Note: compact flag was already checked in enum processing at this
         // point.
-        checker
-            .reject_compact()
-            .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+        checker.reject_compact().map_err(|e| {
+            MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+        })?;
 
         // `Hint` remains relevant only if single-field struct is processed.
         // Note: checker gets renewed when fields of enum are processed.
@@ -958,8 +857,9 @@ where
             ext_memory,
             position,
             registry,
-            Propagated::for_field(&checker, field)
-                .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?,
+            Propagated::for_field(&checker, field).map_err(|e| {
+                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+            })?,
             draft_registry,
         )?;
     }
@@ -986,7 +886,7 @@ where
 {
     propagated
         .reject_compact()
-        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e))))?;
 
     let husked = husk_type_no_info::<E, M>(
         element,
@@ -1067,14 +967,14 @@ where
     // BitOrder
     let bitorder_type = registry
         .resolve_ty(bit_ty.bit_order_type.id, ext_memory)
-        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e))))?;
     add_ty_as_regular(draft_registry, bitorder_type, bit_ty.bit_order_type.id)
         .map_err(MetaCutError::Registry)?;
 
     // BitStore
     let bitstore_type = registry
         .resolve_ty(bit_ty.bit_store_type.id, ext_memory)
-        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e))))?;
 
     match bitstore_type.type_def {
         TypeDef::Primitive(TypeDefPrimitive::U8) => {
@@ -1089,7 +989,7 @@ where
         TypeDef::Primitive(TypeDefPrimitive::U64) => {
             pass_bitvec_decode::<u64, B, E>(data, ext_memory, position)
         }
-        _ => Err(ParserError::NotBitStoreType { id }),
+        _ => Err(ParserError::Registry(RegistryError::NotBitStoreType { id })),
     }
     .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
 
@@ -1145,7 +1045,7 @@ where
     let entry_symbol_id = entry_symbol.id;
     checker
         .check_id(entry_symbol_id)
-        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e))))?;
     checker.specialty_set = SpecialtySet {
         compact_at: None,
         hint: Hint::None,
@@ -1153,7 +1053,7 @@ where
 
     let mut ty = registry
         .resolve_ty(entry_symbol_id, ext_memory)
-        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e))))?;
     let mut id = entry_symbol_id;
 
     while let SpecialtyTypeHinted::None = SpecialtyTypeHinted::from_type(&ty) {
@@ -1164,12 +1064,12 @@ where
                     add_ty_as_regular(draft_registry, ty.to_owned(), id)
                         .map_err(MetaCutError::Registry)?;
                     id = x.fields[0].ty.id;
-                    checker
-                        .check_id(id)
-                        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-                    ty = registry
-                        .resolve_ty(id, ext_memory)
-                        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+                    checker.check_id(id).map_err(|e| {
+                        MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                    })?;
+                    ty = registry.resolve_ty(id, ext_memory).map_err(|e| {
+                        MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                    })?;
                     if let Hint::None = checker.specialty_set.hint {
                         checker.specialty_set.hint = Hint::from_field(&x.fields[0])
                     }
@@ -1180,17 +1080,17 @@ where
             TypeDef::Compact(x) => {
                 add_ty_as_regular(draft_registry, ty.to_owned(), id)
                     .map_err(MetaCutError::Registry)?;
-                checker
-                    .reject_compact()
-                    .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+                checker.reject_compact().map_err(|e| {
+                    MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                })?;
                 checker.specialty_set.compact_at = Some(id);
                 id = x.type_param.id;
-                checker
-                    .check_id(id)
-                    .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
-                ty = registry
-                    .resolve_ty(id, ext_memory)
-                    .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
+                checker.check_id(id).map_err(|e| {
+                    MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                })?;
+                ty = registry.resolve_ty(id, ext_memory).map_err(|e| {
+                    MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                })?;
             }
             _ => break,
         }
