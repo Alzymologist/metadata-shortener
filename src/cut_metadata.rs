@@ -92,7 +92,7 @@ pub enum EntryDetails {
 ///
 /// In `ShortRegistry` resolved `id` must match that of the `PortableType`,
 /// regardless of the order.
-#[derive(Clone, Debug, Decode, Encode, PartialEq)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq)]
 pub struct ShortRegistry {
     pub types: Vec<PortableType>,
 }
@@ -450,7 +450,7 @@ where
 /// generate a metadata digest.
 #[cfg(any(feature = "merkle-lean", test))]
 #[repr(C)]
-#[derive(Debug, Decode, Encode)]
+#[derive(Debug, Decode, Encode, Eq, PartialEq)]
 pub struct ShortMetadata<L, E>
 where
     L: Leaf<LEN, E>,
@@ -467,7 +467,7 @@ where
 /// transaction parsing.
 #[repr(C)]
 #[non_exhaustive]
-#[derive(Debug, Decode, Encode)]
+#[derive(Debug, Decode, Encode, Eq, PartialEq)]
 pub enum MetadataDescriptor {
     V0,
     V1 {

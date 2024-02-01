@@ -64,7 +64,7 @@ impl Hasher<LEN> for Blake3Hasher {
 #[cfg(any(feature = "merkle-lean", test))]
 pub type MerkleProofMetadata<L, E> = MerkleProof<LEN, L, E, Blake3Hasher>;
 
-#[derive(Copy, Clone, Debug, Decode, Encode)]
+#[derive(Copy, Clone, Debug, Decode, Encode, Eq, PartialEq)]
 pub struct Blake3Leaf([u8; LEN]);
 
 #[cfg(any(feature = "proof-gen", test))]

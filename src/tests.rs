@@ -16,14 +16,14 @@ use crate::{
 
 fn metadata_v14(filename: &str) -> RuntimeMetadataV14 {
     let metadata_hex = std::fs::read_to_string(filename).unwrap();
-    let metadata_vec = hex::decode(metadata_hex.trim()).unwrap()[5..].to_vec();
-    RuntimeMetadataV14::decode(&mut &metadata_vec[..]).unwrap()
+    let metadata_vec = hex::decode(metadata_hex.trim()).unwrap();
+    RuntimeMetadataV14::decode(&mut &metadata_vec[5..]).unwrap()
 }
 
 fn metadata_v15(filename: &str) -> RuntimeMetadataV15 {
     let metadata_hex = std::fs::read_to_string(filename).unwrap();
-    let metadata_vec = hex::decode(metadata_hex.trim()).unwrap()[5..].to_vec();
-    RuntimeMetadataV15::decode(&mut &metadata_vec[..]).unwrap()
+    let metadata_vec = hex::decode(metadata_hex.trim()).unwrap();
+    RuntimeMetadataV15::decode(&mut &metadata_vec[5..]).unwrap()
 }
 
 fn genesis_hash_acala() -> H256 {
@@ -391,4 +391,33 @@ fn short_metadata_11() {
         &specs_polkadot(),
         genesis_hash_polkadot(),
     );
+}
+
+#[test]
+#[ignore]
+// This test was supposed to check if the short metadata is identical in
+// between `RuntimeMetadataV14` and `RuntimeMetadataV15` which happen to be
+// available at the same time. Well, it is not.
+// In `RuntimeMetadataV14` the type of unchecked extrinsic (`Vec<u8>` or
+// construction resolveable into `Vec<u8>` with parameters corresponding to call,
+// address, signature, and extra of unchecked extrinsic) is present close to the
+// type registry tail, thus shifting the types that are in registry *after* it
+// to `+1` id.
+// `PortableRegistry` has tool to eliminate some types from the registry and
+// correspondingly adjust remaining types id's, however, it shuffles remaining
+// types, and therefore is not suitable for the task as is.
+// As `RuntimeMetadataV15` inevitably replaces `RuntimeMetadataV14`, there
+// could be no sense to force `RuntimeMetadataV14` registry to compatibility,
+// with focus made on supporting `RuntimeMetadataV15` instead.
+fn short_metadata_12() {
+    let data = hex::decode("641a04100000083434000008383800000c31333200000c313736d503040b63ce64c10c0541420f001800000091b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c391b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3").unwrap();
+    let specs = specs_polkadot();
+    
+    let metadata_polkadot_v14 = metadata_v14("for_tests/polkadot1000001_v14");
+    let short_metadata_v14: ShortMetadata<Blake3Leaf, ()> = cut_metadata(&data.as_ref(), &mut (), &metadata_polkadot_v14, &specs).unwrap();
+
+    let metadata_polkadot_v15 = metadata_v15("for_tests/polkadot1000001_v15");
+    let short_metadata_v15: ShortMetadata<Blake3Leaf, ()> = cut_metadata(&data.as_ref(), &mut (), &metadata_polkadot_v15, &specs).unwrap();
+
+    assert_eq!(short_metadata_v14, short_metadata_v15);
 }
