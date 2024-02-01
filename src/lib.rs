@@ -258,9 +258,8 @@
 //! `MetadataDescriptor` contains other relatively short data necessary for
 //! decoding and appropriate data representation:
 //!
-//! - `v15::ExtrinsicMetadata` content from full metadata (extrinsic version,
-//! type id's for address, call, signature, and extra, and set of signed
-//! extensions metadata)
+//! - call type id
+//! - set of signed extension metadata entries [`SignedExtensionMetadata`]
 //! - chain spec name and spec version (extracted from `Version` constant of the
 //! `System` pallet)
 //! - chain specs (base58 prefix for in-chain Ss58 address representation,
