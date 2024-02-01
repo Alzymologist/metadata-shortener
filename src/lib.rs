@@ -349,6 +349,6 @@ pub use crate::cut_metadata::{cut_metadata, cut_metadata_transaction_unmarked};
 pub use crate::cut_metadata::{MetadataDescriptor, ShortRegistry};
 
 pub use substrate_parser::{
-    traits::{ExtrinsicTypeParams, SignedExtensionMetadata, SpecNameVersion},
+    traits::{SignedExtensionMetadata, SpecNameVersion},
     ShortSpecs,
 };
