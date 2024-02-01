@@ -354,12 +354,12 @@ where
     E: ExternalMemory,
     M: AsMetadata<E>,
 {
-    let extrinsic_type_params = full_metadata
-        .extrinsic_type_params()
+    let call_ty = full_metadata
+        .call_ty()
         .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?;
 
     pass_type::<B, E, M>(
-        &Ty::Symbol(&extrinsic_type_params.call_ty),
+        &Ty::Symbol(&call_ty),
         data,
         ext_memory,
         position,
@@ -471,11 +471,7 @@ where
 pub enum MetadataDescriptor {
     V0,
     V1 {
-        extrinsic_version: u8,
-        address_ty: UntrackedSymbol<TypeId>,
         call_ty: UntrackedSymbol<TypeId>,
-        signature_ty: UntrackedSymbol<TypeId>,
-        extra_ty: UntrackedSymbol<TypeId>,
         signed_extensions: Vec<SignedExtensionMetadata>,
         spec_name_version: SpecNameVersion,
         base58prefix: u16,
@@ -533,18 +529,10 @@ where
     let proof = MerkleProofMetadata::for_leaves_subset(leaves_long, &leaves_short, ext_memory)
         .map_err(MetaCutError::TreeCalculateProof)?;
 
-    let extrinsic_type_params = full_metadata
-        .extrinsic_type_params()
-        .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?;
-
     let metadata_descriptor = MetadataDescriptor::V1 {
-        extrinsic_version: full_metadata
-            .extrinsic_version()
+        call_ty: full_metadata
+            .call_ty()
             .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
-        address_ty: extrinsic_type_params.address_ty,
-        call_ty: extrinsic_type_params.call_ty,
-        signature_ty: extrinsic_type_params.signature_ty,
-        extra_ty: extrinsic_type_params.extra_ty,
         signed_extensions: full_metadata
             .signed_extensions()
             .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
@@ -625,18 +613,10 @@ where
     let proof = MerkleProofMetadata::for_leaves_subset(leaves_long, &leaves_short, ext_memory)
         .map_err(MetaCutError::TreeCalculateProof)?;
 
-    let extrinsic_type_params = full_metadata
-        .extrinsic_type_params()
-        .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?;
-
     let metadata_descriptor = MetadataDescriptor::V1 {
-        extrinsic_version: full_metadata
-            .extrinsic_version()
+        call_ty: full_metadata
+            .call_ty()
             .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
-        address_ty: extrinsic_type_params.address_ty,
-        call_ty: extrinsic_type_params.call_ty,
-        signature_ty: extrinsic_type_params.signature_ty,
-        extra_ty: extrinsic_type_params.extra_ty,
         signed_extensions: full_metadata
             .signed_extensions()
             .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,

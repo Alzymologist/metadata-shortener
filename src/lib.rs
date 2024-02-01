@@ -128,7 +128,7 @@
 //!     cut_metadata(&data.as_ref(), &mut (), &full_metadata, &specs_westend).unwrap();
 //!
 //! // `ShortMetadata` is substantially shorter. SCALE-encoded size:
-//! assert_eq!(4521, short_metadata.encode().len());
+//! assert_eq!(4514, short_metadata.encode().len());
 //!
 //! // Genesis hash, required for decoding:
 //! let westend_genesis_hash =

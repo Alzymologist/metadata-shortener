@@ -1,6 +1,11 @@
 //! Traits for digest generation.
 use crate::std::borrow::ToOwned;
 
+#[cfg(all(any(feature = "merkle-lean", test), not(feature = "std")))]
+use core::any::TypeId;
+#[cfg(all(any(feature = "merkle-lean", test), feature = "std"))]
+use std::any::TypeId;
+
 #[cfg(any(feature = "merkle-standard", feature = "merkle-lean", test))]
 use crate::std::vec::Vec;
 
@@ -19,12 +24,14 @@ use merkle_cbt_lean::{Hasher, Leaf, MerkleProof};
 
 use parity_scale_codec::{Decode, Encode};
 
+#[cfg(any(feature = "merkle-lean", test))]
+use scale_info::interner::UntrackedSymbol;
 #[cfg(any(feature = "merkle-standard", test))]
 use scale_info::PortableType;
 use scale_info::{form::PortableForm, PortableRegistry, Type, TypeDef};
 
 #[cfg(any(feature = "merkle-lean", test))]
-use substrate_parser::traits::{ExtrinsicTypeParams, SignedExtensionMetadata, SpecNameVersion};
+use substrate_parser::traits::{SignedExtensionMetadata, SpecNameVersion};
 use substrate_parser::{error::RegistryError, traits::ResolveType};
 #[cfg(any(feature = "merkle-lean", feature = "merkle-standard", test))]
 use substrate_parser::{
@@ -114,17 +121,10 @@ where
         ext_memory: &mut E,
     ) -> Result<[u8; LEN], MetaCutError<E, Self>> {
         let types_merkle_root = self.types_merkle_root(ext_memory)?;
-        let extrinsic_type_params = self
-            .extrinsic_type_params()
-            .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?;
         let metadata_descriptor = MetadataDescriptor::V1 {
-            extrinsic_version: self
-                .extrinsic_version()
+            call_ty: self
+                .call_ty()
                 .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
-            address_ty: extrinsic_type_params.address_ty,
-            call_ty: extrinsic_type_params.call_ty,
-            signature_ty: extrinsic_type_params.signature_ty,
-            extra_ty: extrinsic_type_params.extra_ty,
             signed_extensions: self
                 .signed_extensions()
                 .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
@@ -310,11 +310,7 @@ where
         match &self.metadata_descriptor {
             MetadataDescriptor::V0 => Err(MetadataDescriptorError::DescriptorVersionIncompatible),
             MetadataDescriptor::V1 {
-                extrinsic_version: _,
-                address_ty: _,
                 call_ty: _,
-                signature_ty: _,
-                extra_ty: _,
                 signed_extensions: _,
                 spec_name_version,
                 base58prefix: _,
@@ -324,44 +320,17 @@ where
         }
     }
 
-    fn extrinsic_type_params(&self) -> Result<ExtrinsicTypeParams, Self::MetaStructureError> {
+    fn call_ty(&self) -> Result<UntrackedSymbol<TypeId>, Self::MetaStructureError> {
         match &self.metadata_descriptor {
             MetadataDescriptor::V0 => Err(MetadataDescriptorError::DescriptorVersionIncompatible),
             MetadataDescriptor::V1 {
-                extrinsic_version: _,
-                address_ty,
                 call_ty,
-                signature_ty,
-                extra_ty,
                 signed_extensions: _,
                 spec_name_version: _,
                 base58prefix: _,
                 decimals: _,
                 unit: _,
-            } => Ok(ExtrinsicTypeParams {
-                address_ty: *address_ty,
-                call_ty: *call_ty,
-                signature_ty: *signature_ty,
-                extra_ty: *extra_ty,
-            }),
-        }
-    }
-
-    fn extrinsic_version(&self) -> Result<u8, Self::MetaStructureError> {
-        match &self.metadata_descriptor {
-            MetadataDescriptor::V0 => Err(MetadataDescriptorError::DescriptorVersionIncompatible),
-            MetadataDescriptor::V1 {
-                extrinsic_version,
-                address_ty: _,
-                call_ty: _,
-                signature_ty: _,
-                extra_ty: _,
-                signed_extensions: _,
-                spec_name_version: _,
-                base58prefix: _,
-                decimals: _,
-                unit: _,
-            } => Ok(*extrinsic_version),
+            } => Ok(*call_ty),
         }
     }
 
@@ -369,11 +338,7 @@ where
         match &self.metadata_descriptor {
             MetadataDescriptor::V0 => Err(MetadataDescriptorError::DescriptorVersionIncompatible),
             MetadataDescriptor::V1 {
-                extrinsic_version: _,
-                address_ty: _,
                 call_ty: _,
-                signature_ty: _,
-                extra_ty: _,
                 signed_extensions,
                 spec_name_version: _,
                 base58prefix: _,
@@ -424,11 +389,7 @@ where
         match &self.metadata_descriptor {
             MetadataDescriptor::V0 => Err(MetadataDescriptorError::DescriptorVersionIncompatible),
             MetadataDescriptor::V1 {
-                extrinsic_version: _,
-                address_ty: _,
                 call_ty: _,
-                signature_ty: _,
-                extra_ty: _,
                 signed_extensions: _,
                 spec_name_version: _,
                 base58prefix,
