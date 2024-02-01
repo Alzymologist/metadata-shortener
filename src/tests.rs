@@ -412,12 +412,14 @@ fn short_metadata_11() {
 fn short_metadata_12() {
     let data = hex::decode("641a04100000083434000008383800000c31333200000c313736d503040b63ce64c10c0541420f001800000091b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c391b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3").unwrap();
     let specs = specs_polkadot();
-    
+
     let metadata_polkadot_v14 = metadata_v14("for_tests/polkadot1000001_v14");
-    let short_metadata_v14: ShortMetadata<Blake3Leaf, ()> = cut_metadata(&data.as_ref(), &mut (), &metadata_polkadot_v14, &specs).unwrap();
+    let short_metadata_v14: ShortMetadata<Blake3Leaf, ()> =
+        cut_metadata(&data.as_ref(), &mut (), &metadata_polkadot_v14, &specs).unwrap();
 
     let metadata_polkadot_v15 = metadata_v15("for_tests/polkadot1000001_v15");
-    let short_metadata_v15: ShortMetadata<Blake3Leaf, ()> = cut_metadata(&data.as_ref(), &mut (), &metadata_polkadot_v15, &specs).unwrap();
+    let short_metadata_v15: ShortMetadata<Blake3Leaf, ()> =
+        cut_metadata(&data.as_ref(), &mut (), &metadata_polkadot_v15, &specs).unwrap();
 
     assert_eq!(short_metadata_v14, short_metadata_v15);
 }
