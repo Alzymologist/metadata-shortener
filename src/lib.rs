@@ -128,7 +128,7 @@
 //!     cut_metadata(&data.as_ref(), &mut (), &full_metadata, &specs_westend).unwrap();
 //!
 //! // `ShortMetadata` is substantially shorter. SCALE-encoded size:
-//! assert_eq!(4607, short_metadata.encode().len());
+//! assert_eq!(4514, short_metadata.encode().len());
 //!
 //! // Genesis hash, required for decoding:
 //! let westend_genesis_hash =
@@ -258,7 +258,8 @@
 //! `MetadataDescriptor` contains other relatively short data necessary for
 //! decoding and appropriate data representation:
 //!
-//! - `ExtrinsicMetadata` cloned from full metadata,
+//! - call type id
+//! - set of signed extension metadata entries [`SignedExtensionMetadata`]
 //! - chain spec name and spec version (extracted from `Version` constant of the
 //! `System` pallet)
 //! - chain specs (base58 prefix for in-chain Ss58 address representation,
@@ -346,4 +347,7 @@ pub use crate::cut_metadata::ShortMetadata;
 pub use crate::cut_metadata::{cut_metadata, cut_metadata_transaction_unmarked};
 pub use crate::cut_metadata::{MetadataDescriptor, ShortRegistry};
 
-pub use substrate_parser::ShortSpecs;
+pub use substrate_parser::{
+    traits::{SignedExtensionMetadata, SpecNameVersion},
+    ShortSpecs,
+};

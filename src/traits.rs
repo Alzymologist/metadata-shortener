@@ -1,6 +1,11 @@
 //! Traits for digest generation.
 use crate::std::borrow::ToOwned;
 
+#[cfg(all(any(feature = "merkle-lean", test), not(feature = "std")))]
+use core::any::TypeId;
+#[cfg(all(any(feature = "merkle-lean", test), feature = "std"))]
+use std::any::TypeId;
+
 #[cfg(any(feature = "merkle-standard", feature = "merkle-lean", test))]
 use crate::std::vec::Vec;
 
@@ -9,10 +14,7 @@ use external_memory_tools::AddressableBuffer;
 use external_memory_tools::ExternalMemory;
 
 #[cfg(any(feature = "merkle-standard", test))]
-use frame_metadata::v14::RuntimeMetadataV14;
-
-#[cfg(any(feature = "merkle-lean", test))]
-use frame_metadata::v14::ExtrinsicMetadata;
+use frame_metadata::{v14::RuntimeMetadataV14, v15::RuntimeMetadataV15};
 
 #[cfg(any(feature = "merkle-standard", test))]
 use merkle_cbt::{merkle_tree::Merge, CBMT};
@@ -22,13 +24,15 @@ use merkle_cbt_lean::{Hasher, Leaf, MerkleProof};
 
 use parity_scale_codec::{Decode, Encode};
 
+#[cfg(any(feature = "merkle-lean", test))]
+use scale_info::interner::UntrackedSymbol;
 #[cfg(any(feature = "merkle-standard", test))]
 use scale_info::PortableType;
 use scale_info::{form::PortableForm, PortableRegistry, Type, TypeDef};
 
 #[cfg(any(feature = "merkle-lean", test))]
-use substrate_parser::traits::SpecNameVersion;
-use substrate_parser::{error::ParserError, traits::ResolveType};
+use substrate_parser::traits::{SignedExtensionMetadata, SpecNameVersion};
+use substrate_parser::{error::RegistryError, traits::ResolveType};
 #[cfg(any(feature = "merkle-lean", feature = "merkle-standard", test))]
 use substrate_parser::{
     error::SignableError, parse_transaction, parse_transaction_unmarked, traits::AsMetadata,
@@ -67,7 +71,7 @@ impl Hasher<LEN> for Blake3Hasher {
 #[cfg(any(feature = "merkle-lean", test))]
 pub type MerkleProofMetadata<L, E> = MerkleProof<LEN, L, E, Blake3Hasher>;
 
-#[derive(Copy, Clone, Debug, Decode, Encode)]
+#[derive(Copy, Clone, Debug, Decode, Encode, Eq, PartialEq)]
 pub struct Blake3Leaf([u8; LEN]);
 
 #[cfg(any(feature = "proof-gen", test))]
@@ -118,8 +122,11 @@ where
     ) -> Result<[u8; LEN], MetaCutError<E, Self>> {
         let types_merkle_root = self.types_merkle_root(ext_memory)?;
         let metadata_descriptor = MetadataDescriptor::V1 {
-            extrinsic: self
-                .extrinsic()
+            call_ty: self
+                .call_ty()
+                .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
+            signed_extensions: self
+                .signed_extensions()
                 .map_err(|e| MetaCutError::Signable(SignableError::MetaStructure(e)))?,
             spec_name_version: self
                 .spec_name_version()
@@ -275,13 +282,13 @@ impl<E: ExternalMemory> ResolveType<E> for ShortRegistry {
         &self,
         id: u32,
         _ext_memory: &mut E,
-    ) -> Result<Type<PortableForm>, ParserError<E>> {
+    ) -> Result<Type<PortableForm>, RegistryError> {
         for short_registry_entry in self.types.iter() {
             if short_registry_entry.id == id {
                 return Ok(short_registry_entry.ty.to_owned());
             }
         }
-        Err(ParserError::V14TypeNotResolved { id })
+        Err(RegistryError::TypeNotResolved { id })
     }
 }
 
@@ -303,7 +310,8 @@ where
         match &self.metadata_descriptor {
             MetadataDescriptor::V0 => Err(MetadataDescriptorError::DescriptorVersionIncompatible),
             MetadataDescriptor::V1 {
-                extrinsic: _,
+                call_ty: _,
+                signed_extensions: _,
                 spec_name_version,
                 base58prefix: _,
                 decimals: _,
@@ -312,16 +320,31 @@ where
         }
     }
 
-    fn extrinsic(&self) -> Result<ExtrinsicMetadata<PortableForm>, Self::MetaStructureError> {
+    fn call_ty(&self) -> Result<UntrackedSymbol<TypeId>, Self::MetaStructureError> {
         match &self.metadata_descriptor {
             MetadataDescriptor::V0 => Err(MetadataDescriptorError::DescriptorVersionIncompatible),
             MetadataDescriptor::V1 {
-                extrinsic,
+                call_ty,
+                signed_extensions: _,
                 spec_name_version: _,
                 base58prefix: _,
                 decimals: _,
                 unit: _,
-            } => Ok(extrinsic.to_owned()),
+            } => Ok(*call_ty),
+        }
+    }
+
+    fn signed_extensions(&self) -> Result<Vec<SignedExtensionMetadata>, Self::MetaStructureError> {
+        match &self.metadata_descriptor {
+            MetadataDescriptor::V0 => Err(MetadataDescriptorError::DescriptorVersionIncompatible),
+            MetadataDescriptor::V1 {
+                call_ty: _,
+                signed_extensions,
+                spec_name_version: _,
+                base58prefix: _,
+                decimals: _,
+                unit: _,
+            } => Ok(signed_extensions.to_owned()),
         }
     }
 }
@@ -366,7 +389,8 @@ where
         match &self.metadata_descriptor {
             MetadataDescriptor::V0 => Err(MetadataDescriptorError::DescriptorVersionIncompatible),
             MetadataDescriptor::V1 {
-                extrinsic: _,
+                call_ty: _,
+                signed_extensions: _,
                 spec_name_version: _,
                 base58prefix,
                 decimals,
@@ -381,19 +405,28 @@ where
 }
 
 #[cfg(any(feature = "merkle-standard", test))]
-impl<E: ExternalMemory> HashableMetadata<E> for RuntimeMetadataV14 {
-    fn types_merkle_root(
-        &self,
-        _ext_memory: &mut E,
-    ) -> Result<[u8; LEN], MetaCutError<E, RuntimeMetadataV14>> {
-        let leaves_registry =
-            <PortableRegistry as HashableRegistry<E>>::merkle_leaves_source(&self.types)
-                .map_err(MetaCutError::Registry)?;
-        let leaves: Vec<[u8; LEN]> = leaves_registry
-            .types
-            .iter()
-            .map(blake3_leaf::<PortableType>)
-            .collect();
-        Ok(CBMT::<[u8; LEN], Blake3Hasher>::build_merkle_root(&leaves))
+macro_rules! impl_hashable_metadata {
+    ($($ty: ty), *) => {
+        $(
+            impl<E: ExternalMemory> HashableMetadata<E> for $ty {
+                fn types_merkle_root(
+                    &self,
+                    _ext_memory: &mut E,
+                ) -> Result<[u8; LEN], MetaCutError<E, $ty>> {
+                    let leaves_registry =
+                        <PortableRegistry as HashableRegistry<E>>::merkle_leaves_source(&self.types)
+                            .map_err(MetaCutError::Registry)?;
+                    let leaves: Vec<[u8; LEN]> = leaves_registry
+                        .types
+                        .iter()
+                        .map(blake3_leaf::<PortableType>)
+                        .collect();
+                    Ok(CBMT::<[u8; LEN], Blake3Hasher>::build_merkle_root(&leaves))
+                }
+            }
+        )*
     }
 }
+
+#[cfg(any(feature = "merkle-standard", test))]
+impl_hashable_metadata!(RuntimeMetadataV14, RuntimeMetadataV15);
