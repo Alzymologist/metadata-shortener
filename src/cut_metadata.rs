@@ -84,7 +84,7 @@ pub enum EntryDetails {
 /// Note that although its inner structure is identical to that of
 /// [`PortableRegistry`](scale_info::PortableRegistry), `ShortRegistry` has a
 /// different implementation of type resolving with
-/// [`ResolveType`](substrate_parser::traits::ResolveType) trait implementation.
+/// [`ResolveType`] trait implementation.
 ///
 /// In `PortableRegistry` type is resolved by `id` with in-built tools of
 /// [`scale_info`] crate, effectively `id` being the index of corresponding
@@ -103,8 +103,8 @@ pub struct ShortRegistry {
 /// Each element is a [`PortableType`] with either a single type entry
 /// (for non-enums) or with an enum entry with a single enum variant (for
 /// enums). Note that if multiple variants of a single enum are present, they
-/// are entered as separate [`PortableType`]s with the same id. Thus `Leaves`
-/// are not intended to be used for decoding, only for Merkle tree construction.
+/// are entered as separate [`PortableType`]s with the same id. `LeavesRegistry`
+/// is not intended to be used for decoding, only for Merkle tree construction.
 #[derive(Debug, PartialEq)]
 pub struct LeavesRegistry {
     pub types: Vec<PortableType>,

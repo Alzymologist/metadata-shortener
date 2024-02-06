@@ -53,8 +53,10 @@ use crate::error::MetaCutError;
 use crate::error::MetadataDescriptorError;
 use crate::error::RegistryCutError;
 
+/// Hash length.
 pub const LEN: usize = 32;
 
+/// Hasher. Specifies hash structure and merging.
 #[derive(Debug)]
 pub struct Blake3Hasher;
 
@@ -68,9 +70,13 @@ impl Hasher<LEN> for Blake3Hasher {
     }
 }
 
+/// [`MerkleProof`] for metadata.
+///
+/// Hash length is set to [`LEN`], [`Hasher`] is specified as [`Blake3Hasher`].
 #[cfg(any(feature = "merkle-lean", test))]
 pub type MerkleProofMetadata<L, E> = MerkleProof<LEN, L, E, Blake3Hasher>;
 
+/// Individual Merkle tree leaf.
 #[derive(Copy, Clone, Debug, Decode, Encode, Eq, PartialEq)]
 pub struct Blake3Leaf([u8; LEN]);
 
@@ -274,8 +280,7 @@ macro_rules! impl_hashable_registry {
     }
 }
 
-impl_hashable_registry!(PortableRegistry);
-impl_hashable_registry!(ShortRegistry);
+impl_hashable_registry!(PortableRegistry, ShortRegistry);
 
 impl<E: ExternalMemory> ResolveType<E> for ShortRegistry {
     fn resolve_ty(

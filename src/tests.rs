@@ -329,12 +329,7 @@ fn short_metadata_8() {
 #[test]
 fn short_metadata_9() {
     let data = hex::decode("0403008465567bd3ad504ab85a6d3ecbc0ce39eec6aacc180c38b564513d9f6113e14c070010a5d4e805000000002427000016000000f421bf66696bba5abfa1ae7aa8ec8bac9ed151f7ce16b996b5d3bbde614c3441f421bf66696bba5abfa1ae7aa8ec8bac9ed151f7ce16b996b5d3bbde614c344100").unwrap();
-    println!(
-        "{} vs {}",
-        hex::encode(982u32.to_le_bytes()),
-        hex::encode(1006001u32.to_le_bytes())
-    );
-    let metadata_rococo = metadata_v15("for_tests/rococo1006002");
+    let metadata_rococo = metadata_v15("for_tests/rococo1006002_experimental");
     test_procedure_transaction_unmarked(
         data,
         &metadata_rococo,
@@ -346,7 +341,7 @@ fn short_metadata_9() {
 #[test]
 fn short_metadata_10() {
     let data = hex::decode("0403008465567bd3ad504ab85a6d3ecbc0ce39eec6aacc180c38b564513d9f6113e14c070010a5d4e805000000012427000016000000f421bf66696bba5abfa1ae7aa8ec8bac9ed151f7ce16b996b5d3bbde614c3441f421bf66696bba5abfa1ae7aa8ec8bac9ed151f7ce16b996b5d3bbde614c3441017a090b369e6a7472778569cb3e42ba5dcf4eca8ab505e895cd5463ca48d64ac9").unwrap();
-    let metadata_rococo = metadata_v15("for_tests/rococo1006002");
+    let metadata_rococo = metadata_v15("for_tests/rococo1006002_experimental");
     test_procedure_transaction_unmarked(
         data,
         &metadata_rococo,
