@@ -14,7 +14,7 @@ use external_memory_tools::AddressableBuffer;
 use external_memory_tools::ExternalMemory;
 
 #[cfg(any(feature = "merkle-standard", test))]
-use frame_metadata::{v14::RuntimeMetadataV14, v15::RuntimeMetadataV15};
+use frame_metadata::v15::RuntimeMetadataV15;
 
 #[cfg(any(feature = "merkle-standard", test))]
 use merkle_cbt::{merkle_tree::Merge, CBMT};
@@ -405,28 +405,19 @@ where
 }
 
 #[cfg(any(feature = "merkle-standard", test))]
-macro_rules! impl_hashable_metadata {
-    ($($ty: ty), *) => {
-        $(
-            impl<E: ExternalMemory> HashableMetadata<E> for $ty {
-                fn types_merkle_root(
-                    &self,
-                    _ext_memory: &mut E,
-                ) -> Result<[u8; LEN], MetaCutError<E, $ty>> {
-                    let leaves_registry =
-                        <PortableRegistry as HashableRegistry<E>>::merkle_leaves_source(&self.types)
-                            .map_err(MetaCutError::Registry)?;
-                    let leaves: Vec<[u8; LEN]> = leaves_registry
-                        .types
-                        .iter()
-                        .map(blake3_leaf::<PortableType>)
-                        .collect();
-                    Ok(CBMT::<[u8; LEN], Blake3Hasher>::build_merkle_root(&leaves))
-                }
-            }
-        )*
+impl<E: ExternalMemory> HashableMetadata<E> for RuntimeMetadataV15 {
+    fn types_merkle_root(
+        &self,
+        _ext_memory: &mut E,
+    ) -> Result<[u8; LEN], MetaCutError<E, RuntimeMetadataV15>> {
+        let leaves_registry =
+            <PortableRegistry as HashableRegistry<E>>::merkle_leaves_source(&self.types)
+                .map_err(MetaCutError::Registry)?;
+        let leaves: Vec<[u8; LEN]> = leaves_registry
+            .types
+            .iter()
+            .map(blake3_leaf::<PortableType>)
+            .collect();
+        Ok(CBMT::<[u8; LEN], Blake3Hasher>::build_merkle_root(&leaves))
     }
 }
-
-#[cfg(any(feature = "merkle-standard", test))]
-impl_hashable_metadata!(RuntimeMetadataV14, RuntimeMetadataV15);

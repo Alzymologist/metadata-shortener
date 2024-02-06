@@ -93,7 +93,7 @@
 //! ```
 //! # #[cfg(all(feature = "std", feature = "merkle-standard", feature = "proof-gen"))]
 //! # {
-//! use frame_metadata::v14::RuntimeMetadataV14;
+//! use frame_metadata::v15::RuntimeMetadataV15;
 //! use metadata_shortener::{
 //!     traits::{Blake3Leaf, ExtendedMetadata},
 //!     cut_metadata, ShortMetadata, ShortSpecs,
@@ -103,15 +103,15 @@
 //! use std::str::FromStr;
 //! use substrate_parser::{parse_transaction, AsMetadata};
 //!
-//! // SCALE-encoded metadata, read from file.
-//! let meta_file = std::fs::read("for_tests/westend9430").unwrap();
-//! let meta = Vec::<u8>::decode(&mut &meta_file[..]).unwrap();
+//! // Hex metadata string, read from file.
+//! let meta_hex = std::fs::read_to_string("for_tests/westend1006001").unwrap();
+//! let meta = hex::decode(meta_hex.trim()).unwrap();
 //!
 //! // Full metadata is quite bulky. Check SCALE-encoded size here, for simplicity:
-//! assert_eq!(300431, meta.len());
+//! assert_eq!(291897, meta.len());
 //!
-//! // Full `RuntimeMetadataV14`, ready to use.
-//! let full_metadata = RuntimeMetadataV14::decode(&mut &meta[5..]).unwrap();
+//! // Full `RuntimeMetadataV15`, ready to use.
+//! let full_metadata = RuntimeMetadataV15::decode(&mut &meta[5..]).unwrap();
 //!
 //! let specs_westend = ShortSpecs {
 //!     base58prefix: 42,
@@ -121,14 +121,14 @@
 //!
 //! // Transaction for which the metadata is cut: utility batch call combining
 //! // two staking calls.
-//! let data = hex::decode("c901100208060007001b2c3ef70006050c0008264834504a64ace1373f0c8ed5d57381ddf54a2f67a318fa42b1352681606d00aebb0211dbb07b4d335a657257b8ac5e53794c901e4f616d4a254f2490c43934009ae581fef1fc06828723715731adcf810e42ce4dadad629b1b7fa5c3c144a81d55000800d624000007000000e143f23803ac50e8f6f8e62695d1ce9e4e1d68aa36c1cd2cfd15340213f3423e5b1d91c89d3de85a4d6eee76ecf3a303cf38b59e7d81522eb7cd24b02eb161ff").unwrap();
+//! let data = hex::decode("c901100208060007001b2c3ef70006050c0008264834504a64ace1373f0c8ed5d57381ddf54a2f67a318fa42b1352681606d00aebb0211dbb07b4d335a657257b8ac5e53794c901e4f616d4a254f2490c43934009ae581fef1fc06828723715731adcf810e42ce4dadad629b1b7fa5c3c144a81d55000800b1590f0007000000e143f23803ac50e8f6f8e62695d1ce9e4e1d68aa36c1cd2cfd15340213f3423e5b1d91c89d3de85a4d6eee76ecf3a303cf38b59e7d81522eb7cd24b02eb161ff").unwrap();
 //!
 //! // Make short metadata here. It is sufficient to decode the transaction.
 //! let short_metadata =
 //!     cut_metadata(&data.as_ref(), &mut (), &full_metadata, &specs_westend).unwrap();
 //!
 //! // `ShortMetadata` is substantially shorter. SCALE-encoded size:
-//! assert_eq!(4514, short_metadata.encode().len());
+//! assert_eq!(4486, short_metadata.encode().len());
 //!
 //! // Genesis hash, required for decoding:
 //! let westend_genesis_hash =
@@ -162,7 +162,7 @@
 //! .unwrap()
 //! .card(
 //!     &specs_westend,
-//!     &<RuntimeMetadataV14 as AsMetadata<()>>::spec_name_version(&full_metadata)
+//!     &<RuntimeMetadataV15 as AsMetadata<()>>::spec_name_version(&full_metadata)
 //!         .unwrap()
 //!         .spec_name,
 //! );
@@ -272,7 +272,7 @@
 //! ```
 //! # #[cfg(all(feature = "std", feature = "merkle-standard", feature = "proof-gen"))]
 //! # {
-//! use frame_metadata::v14::RuntimeMetadataV14;
+//! use frame_metadata::v15::RuntimeMetadataV15;
 //! use metadata_shortener::{
 //!     cut_metadata,
 //!     traits::{Blake3Leaf, ExtendedMetadata, HashableMetadata},
@@ -281,12 +281,12 @@
 //! use parity_scale_codec::Decode;
 //! use substrate_parser::AsMetadata;
 //!
-//! // SCALE-encoded metadata, read from file.
-//! let meta_file = std::fs::read("for_tests/westend9430").unwrap();
-//! let meta = Vec::<u8>::decode(&mut &meta_file[..]).unwrap();
+//! // Hex metadata string, read from file.
+//! let meta_hex = std::fs::read_to_string("for_tests/westend1006001").unwrap();
+//! let meta = hex::decode(meta_hex.trim()).unwrap();
 //!
-//! // Full `RuntimeMetadataV14`, ready to use.
-//! let full_metadata = RuntimeMetadataV14::decode(&mut &meta[5..]).unwrap();
+//! // Full `RuntimeMetadataV15`, ready to use.
+//! let full_metadata = RuntimeMetadataV15::decode(&mut &meta[5..]).unwrap();
 //!
 //! let specs_westend = ShortSpecs {
 //!     base58prefix: 42,
@@ -296,7 +296,7 @@
 //!
 //! // Full metadata digest:
 //! let digest_full_metadata =
-//!     <RuntimeMetadataV14 as HashableMetadata<()>>::digest_with_short_specs(
+//!     <RuntimeMetadataV15 as HashableMetadata<()>>::digest_with_short_specs(
 //!         &full_metadata,
 //!         &specs_westend,
 //!         &mut (),

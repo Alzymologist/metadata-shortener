@@ -1,5 +1,5 @@
 #[cfg(all(feature = "std", feature = "merkle-standard", feature = "proof-gen"))]
-use frame_metadata::v14::RuntimeMetadataV14;
+use frame_metadata::v15::RuntimeMetadataV15;
 
 #[cfg(all(feature = "std", feature = "merkle-standard", feature = "proof-gen"))]
 use metadata_shortener::{
@@ -15,10 +15,10 @@ use substrate_parser::ShortSpecs;
 
 #[cfg(all(feature = "std", feature = "merkle-standard", feature = "proof-gen"))]
 fn main() {
-    let meta_file = std::fs::read("for_tests/westend9430").unwrap();
-    let meta = Vec::<u8>::decode(&mut &meta_file[..]).unwrap();
+    let meta_hex = std::fs::read_to_string("for_tests/westend1006001").unwrap();
+    let meta = hex::decode(meta_hex.trim()).unwrap();
     println!("length of basic meta: {}", meta.len());
-    let full_metadata = RuntimeMetadataV14::decode(&mut &meta[5..]).unwrap();
+    let full_metadata = RuntimeMetadataV15::decode(&mut &meta[5..]).unwrap();
 
     let specs_westend = ShortSpecs {
         base58prefix: 42,
@@ -47,7 +47,7 @@ fn main() {
         )
         .unwrap();
     let root_full_metadata =
-        <RuntimeMetadataV14 as HashableMetadata<()>>::types_merkle_root(&full_metadata, &mut ())
+        <RuntimeMetadataV15 as HashableMetadata<()>>::types_merkle_root(&full_metadata, &mut ())
             .unwrap();
 
     // Roots are equal.
@@ -58,7 +58,7 @@ fn main() {
         <ShortMetadata<Blake3Leaf, ()> as ExtendedMetadata<()>>::digest(&short_metadata, &mut ())
             .unwrap();
     let digest_full_metadata =
-        <RuntimeMetadataV14 as HashableMetadata<()>>::digest_with_short_specs(
+        <RuntimeMetadataV15 as HashableMetadata<()>>::digest_with_short_specs(
             &full_metadata,
             &specs_westend,
             &mut (),
