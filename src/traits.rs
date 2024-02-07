@@ -14,7 +14,7 @@ use external_memory_tools::AddressableBuffer;
 use external_memory_tools::ExternalMemory;
 
 #[cfg(any(feature = "merkle-standard", test))]
-use frame_metadata::{v14::RuntimeMetadataV14, v15::RuntimeMetadataV15};
+use frame_metadata::v15::RuntimeMetadataV15;
 
 #[cfg(any(feature = "merkle-standard", test))]
 use merkle_cbt::{merkle_tree::Merge, CBMT};
@@ -40,12 +40,10 @@ use substrate_parser::{
 };
 
 #[cfg(any(feature = "merkle-lean", feature = "merkle-standard", test))]
-use crate::cut_metadata::MetadataDescriptor;
+use crate::cutter::MetadataDescriptor;
 #[cfg(any(feature = "merkle-lean", test))]
-use crate::cut_metadata::ShortMetadata;
-use crate::cut_metadata::{
-    add_as_enum, add_ty_as_regular, DraftRegistry, LeavesRegistry, ShortRegistry,
-};
+use crate::cutter::ShortMetadata;
+use crate::cutter::{add_as_enum, add_ty_as_regular, DraftRegistry, LeavesRegistry, ShortRegistry};
 
 #[cfg(any(feature = "merkle-lean", feature = "merkle-standard", test))]
 use crate::error::MetaCutError;
@@ -53,8 +51,10 @@ use crate::error::MetaCutError;
 use crate::error::MetadataDescriptorError;
 use crate::error::RegistryCutError;
 
+/// Hash length used throughout this crate.
 pub const LEN: usize = 32;
 
+/// Hasher used throughout this crate. Specifies hash structure and merging.
 #[derive(Debug)]
 pub struct Blake3Hasher;
 
@@ -68,9 +68,14 @@ impl Hasher<LEN> for Blake3Hasher {
     }
 }
 
+/// [`MerkleProof`] for metadata.
+///
+/// Hash length is set to [`LEN`], [`Hasher`] is specified as [`Blake3Hasher`].
 #[cfg(any(feature = "merkle-lean", test))]
 pub type MerkleProofMetadata<L, E> = MerkleProof<LEN, L, E, Blake3Hasher>;
 
+/// Example Merkle tree leaf. Length is set to [`LEN`], value is available
+/// without external memory access.
 #[derive(Copy, Clone, Debug, Decode, Encode, Eq, PartialEq)]
 pub struct Blake3Leaf([u8; LEN]);
 
@@ -164,7 +169,7 @@ where
     /// Extract [`ShortSpecs`].
     fn to_specs(&self) -> Result<ShortSpecs, <Self as AsMetadata<E>>::MetaStructureError>;
 
-    /// Calculate full digest. Digest is added to transaction before signing.
+    /// Calculate full digest.
     fn digest(&self, ext_memory: &mut E) -> Result<[u8; LEN], MetaCutError<E, Self>> {
         self.digest_with_short_specs(
             &self
@@ -274,8 +279,7 @@ macro_rules! impl_hashable_registry {
     }
 }
 
-impl_hashable_registry!(PortableRegistry);
-impl_hashable_registry!(ShortRegistry);
+impl_hashable_registry!(PortableRegistry, ShortRegistry);
 
 impl<E: ExternalMemory> ResolveType<E> for ShortRegistry {
     fn resolve_ty(
@@ -405,28 +409,19 @@ where
 }
 
 #[cfg(any(feature = "merkle-standard", test))]
-macro_rules! impl_hashable_metadata {
-    ($($ty: ty), *) => {
-        $(
-            impl<E: ExternalMemory> HashableMetadata<E> for $ty {
-                fn types_merkle_root(
-                    &self,
-                    _ext_memory: &mut E,
-                ) -> Result<[u8; LEN], MetaCutError<E, $ty>> {
-                    let leaves_registry =
-                        <PortableRegistry as HashableRegistry<E>>::merkle_leaves_source(&self.types)
-                            .map_err(MetaCutError::Registry)?;
-                    let leaves: Vec<[u8; LEN]> = leaves_registry
-                        .types
-                        .iter()
-                        .map(blake3_leaf::<PortableType>)
-                        .collect();
-                    Ok(CBMT::<[u8; LEN], Blake3Hasher>::build_merkle_root(&leaves))
-                }
-            }
-        )*
+impl<E: ExternalMemory> HashableMetadata<E> for RuntimeMetadataV15 {
+    fn types_merkle_root(
+        &self,
+        _ext_memory: &mut E,
+    ) -> Result<[u8; LEN], MetaCutError<E, RuntimeMetadataV15>> {
+        let leaves_registry =
+            <PortableRegistry as HashableRegistry<E>>::merkle_leaves_source(&self.types)
+                .map_err(MetaCutError::Registry)?;
+        let leaves: Vec<[u8; LEN]> = leaves_registry
+            .types
+            .iter()
+            .map(blake3_leaf::<PortableType>)
+            .collect();
+        Ok(CBMT::<[u8; LEN], Blake3Hasher>::build_merkle_root(&leaves))
     }
 }
-
-#[cfg(any(feature = "merkle-standard", test))]
-impl_hashable_metadata!(RuntimeMetadataV14, RuntimeMetadataV15);

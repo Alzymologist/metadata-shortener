@@ -20,12 +20,12 @@
 //! SCALE-encoded, i.e. preceded by [compact](parity_scale_codec::Compact) of
 //! the call length.
 //!
-//! Type describing all calls available is the type of `Call` parameter of the
-//! `ty` type in [`ExtrinsicMetadata`](frame_metadata::v14::ExtrinsicMetadata).
+//! Type describing all calls available is `call_ty` field in
+//! [`ExtrinsicMetadata`](https://docs.rs/frame-metadata/latest/frame_metadata/v15/struct.ExtrinsicMetadata.html).
 //! The extensions set is determined by `signed_extensions` in
 //! `ExtrinsicMetadata`.
 //!
-//! [`ShortMetadata`] contains:
+//! `ShortMetadata` contains:
 //!
 //! - short types registry [`ShortRegistry`] with description of all types
 //! needed for signable transaction decoding (both for
@@ -35,9 +35,10 @@
 //! - [`MetadataDescriptor`] with other relatively short data necessary for
 //! decoding and appropriate data representation
 //!
-//! Note: chain specs (except base58 prefix in some cases) are **not** in the
-//! full metadata, and should be fetched from chain and provided separately on
-//! `ShortMetadata` generation step, as [`ShortSpecs`].
+//! Note: chain specs (except base58 prefix in some cases) are a part of
+//! `MetadataDescriptor`, but are **not** in the full metadata, and should be
+//! fetched from chain and provided separately on `ShortMetadata` generation
+//! step, as [`ShortSpecs`].
 //!
 //! `ShortRegistry` is generated on the hot side, as the the transaction is
 //! preliminarily decoded and the types used are collected. Entries in
@@ -48,9 +49,10 @@
 //! within a single entry.
 //!
 //! `ShortMetadata` is generated with
-//! [`cut_metadata`](crate::cut_metadata::cut_metadata) for transactions with
+//! `cut_metadata` function for transactions with
 //! double SCALE-encoded call part (length-prefixed), and with
-//! [`cut_metadata_transaction_unmarked`] for single SCALE-encoded call part.
+//! `cut_metadata_transaction_unmarked` function for single SCALE-encoded call
+//! part.
 //!
 //! `ShortMetadata` implements trait
 //! [`AsMetadata`](substrate_parser::AsMetadata) and could be used for chain
@@ -75,11 +77,14 @@
 //!   - Compact of the number of lemmas for Merkle tree
 //!   - Given number of lemmas, 32 bytes each
 //! - SCALE-encoded [`MetadataDescriptor`]:
-//!   - 1-byte version of [`MetadataDescriptor`] (currently the only variant is
-//! `0`). For version `0`:
-//!     - SCALE-encoded
-//! [`ExtrinsicMetadata`](frame_metadata::v14::ExtrinsicMetadata), encoded
-//! size is not known before decoding
+//!   - 1-byte version of [`MetadataDescriptor`] (currently the only functioning
+//! variant is `1`). For version `1`:
+//!     - `id` in types registry for the type describing all available calls
+//!     - Signed extensions set:
+//!         - Compact of the number of provided [`SignedExtensionMetadata`]
+//! entries
+//!         - Given number of SCALE-encoded `SignedExtensionMetadata`, encoded
+//! size of each is not known before decoding
 //!     - Compact length of the printed spec version followed by corresponding
 //! number of utf8 bytes
 //!     - Compact length of the chain spec name followed by corresponding number
@@ -93,7 +98,7 @@
 //! ```
 //! # #[cfg(all(feature = "std", feature = "merkle-standard", feature = "proof-gen"))]
 //! # {
-//! use frame_metadata::v14::RuntimeMetadataV14;
+//! use frame_metadata::v15::RuntimeMetadataV15;
 //! use metadata_shortener::{
 //!     traits::{Blake3Leaf, ExtendedMetadata},
 //!     cut_metadata, ShortMetadata, ShortSpecs,
@@ -103,15 +108,15 @@
 //! use std::str::FromStr;
 //! use substrate_parser::{parse_transaction, AsMetadata};
 //!
-//! // SCALE-encoded metadata, read from file.
-//! let meta_file = std::fs::read("for_tests/westend9430").unwrap();
-//! let meta = Vec::<u8>::decode(&mut &meta_file[..]).unwrap();
+//! // Hex metadata string, read from file.
+//! let meta_hex = std::fs::read_to_string("for_tests/westend1006001").unwrap();
+//! let meta = hex::decode(meta_hex.trim()).unwrap();
 //!
 //! // Full metadata is quite bulky. Check SCALE-encoded size here, for simplicity:
-//! assert_eq!(300431, meta.len());
+//! assert_eq!(291897, meta.len());
 //!
-//! // Full `RuntimeMetadataV14`, ready to use.
-//! let full_metadata = RuntimeMetadataV14::decode(&mut &meta[5..]).unwrap();
+//! // Full `RuntimeMetadataV15`, ready to use.
+//! let full_metadata = RuntimeMetadataV15::decode(&mut &meta[5..]).unwrap();
 //!
 //! let specs_westend = ShortSpecs {
 //!     base58prefix: 42,
@@ -121,18 +126,14 @@
 //!
 //! // Transaction for which the metadata is cut: utility batch call combining
 //! // two staking calls.
-//! let data = hex::decode("c901100208060007001b2c3ef70006050c0008264834504a64ace1373f0c8ed5d57381ddf54a2f67a318fa42b1352681606d00aebb0211dbb07b4d335a657257b8ac5e53794c901e4f616d4a254f2490c43934009ae581fef1fc06828723715731adcf810e42ce4dadad629b1b7fa5c3c144a81d55000800d624000007000000e143f23803ac50e8f6f8e62695d1ce9e4e1d68aa36c1cd2cfd15340213f3423e5b1d91c89d3de85a4d6eee76ecf3a303cf38b59e7d81522eb7cd24b02eb161ff").unwrap();
+//! let data = hex::decode("c901100208060007001b2c3ef70006050c0008264834504a64ace1373f0c8ed5d57381ddf54a2f67a318fa42b1352681606d00aebb0211dbb07b4d335a657257b8ac5e53794c901e4f616d4a254f2490c43934009ae581fef1fc06828723715731adcf810e42ce4dadad629b1b7fa5c3c144a81d55000800b1590f0007000000e143f23803ac50e8f6f8e62695d1ce9e4e1d68aa36c1cd2cfd15340213f3423e5b1d91c89d3de85a4d6eee76ecf3a303cf38b59e7d81522eb7cd24b02eb161ff").unwrap();
 //!
 //! // Make short metadata here. It is sufficient to decode the transaction.
 //! let short_metadata =
 //!     cut_metadata(&data.as_ref(), &mut (), &full_metadata, &specs_westend).unwrap();
 //!
 //! // `ShortMetadata` is substantially shorter. SCALE-encoded size:
-//! assert_eq!(4514, short_metadata.encode().len());
-//!
-//! // Genesis hash, required for decoding:
-//! let westend_genesis_hash =
-//!     H256::from_str("e143f23803ac50e8f6f8e62695d1ce9e4e1d68aa36c1cd2cfd15340213f3423e").unwrap();
+//! assert_eq!(4486, short_metadata.encode().len());
 //!
 //! // Now check that decoding result remains unchanged.
 //!
@@ -157,12 +158,12 @@
 //!     &data.as_ref(),
 //!     &mut (),
 //!     &full_metadata,
-//!     Some(westend_genesis_hash),
+//!     None,
 //! )
 //! .unwrap()
 //! .card(
 //!     &specs_westend,
-//!     &<RuntimeMetadataV14 as AsMetadata<()>>::spec_name_version(&full_metadata)
+//!     &<RuntimeMetadataV15 as AsMetadata<()>>::spec_name_version(&full_metadata)
 //!         .unwrap()
 //!         .spec_name,
 //! );
@@ -225,17 +226,22 @@
 //!
 //! ## Merkle tree for types data
 //!
-//! Merkle tree is generated and processed using tools of [`merkle_cbt`] crate.
+//! Merkle tree is generated and processed using tools of
+//! [`merkle_cbt`](https://docs.rs/merkle-cbt/latest/merkle_cbt/) and
+//! [`merkle_cbt_lean`](https://docs.rs/merkle-cbt-lean/latest/merkle_cbt_lean/)
+//! crates. While providing the same outcome, `merkle_cbt_lean` is tailored for
+//! `no_std` environments with low internal memory capacity and external (streamed) data.
+//!
 //! Merkle leaves are blake3-hashed SCALE-encoded individual
 //! [`PortableType`](scale_info::PortableType) values. In enums the same `id` is
 //! used for every retained variant, and every retained variant is placed as an
 //! individual enum with a single variant.
 //!
 //! For full metadata
-//! [`RuntimeMetadataV14`](frame_metadata::v14::RuntimeMetadataV14), all leaves
-//! are constructed, deterministically sorted, and processed to build the Merkle
-//! tree, and then the root hash.
-//! In [`ShortMetadata`], the available types data is transformed into leaves
+//! [`RuntimeMetadataV15`](https://docs.rs/frame-metadata/latest/frame_metadata/v15/struct.RuntimeMetadataV15.html),
+//! all leaves are constructed, deterministically sorted, and processed to build
+//! the Merkle tree, and then the root hash.
+//! In `ShortMetadata`, the available types data is transformed into leaves
 //! and combined with `MerkleProof` to calculate the root hash.
 //!
 //! Trait [`HashableRegistry`](crate::traits::HashableRegistry) for producing
@@ -243,22 +249,21 @@
 //! [`PortableRegistry`](scale_info::PortableRegistry) and for
 //! [`ShortRegistry`].
 //!
-//! Trait [`HashableMetadata`](crate::traits::HashableMetadata) for producing
-//! Merkle tree root hash is implemented for
-//! [`RuntimeMetadataV14`](frame_metadata::v14::RuntimeMetadataV14) and for
-//! [`ShortMetadata`]. Complete digest could be calculated for
+//! Trait `HashableMetadata` for producing Merkle tree root hash is implemented
+//! both for
+//! [`RuntimeMetadataV15`](https://docs.rs/frame-metadata/latest/frame_metadata/v15/struct.RuntimeMetadataV15.html)
+//! and for `ShortMetadata`. Complete digest could be calculated for
 //! `HashableMetadata` if `ShortSpecs` are provided.
 //!
-//! [`ShortMetadata`] also implements trait
-//! [`ExtendedMetadata`](crate::traits::ExtendedMetadata) for digest calculation
-//! and transaction parsing without providing additional data.
+//! `ShortMetadata` also implements trait `ExtendedMetadata` for digest
+//! calculation and transaction parsing without providing additional data.
 //!
 //! ## Metadata descriptor
 //!
 //! `MetadataDescriptor` contains other relatively short data necessary for
 //! decoding and appropriate data representation:
 //!
-//! - call type id
+//! - `id` in types registry for the type describing all available calls
 //! - set of signed extension metadata entries [`SignedExtensionMetadata`]
 //! - chain spec name and spec version (extracted from `Version` constant of the
 //! `System` pallet)
@@ -272,7 +277,7 @@
 //! ```
 //! # #[cfg(all(feature = "std", feature = "merkle-standard", feature = "proof-gen"))]
 //! # {
-//! use frame_metadata::v14::RuntimeMetadataV14;
+//! use frame_metadata::v15::RuntimeMetadataV15;
 //! use metadata_shortener::{
 //!     cut_metadata,
 //!     traits::{Blake3Leaf, ExtendedMetadata, HashableMetadata},
@@ -281,12 +286,12 @@
 //! use parity_scale_codec::Decode;
 //! use substrate_parser::AsMetadata;
 //!
-//! // SCALE-encoded metadata, read from file.
-//! let meta_file = std::fs::read("for_tests/westend9430").unwrap();
-//! let meta = Vec::<u8>::decode(&mut &meta_file[..]).unwrap();
+//! // Hex metadata string, read from file.
+//! let meta_hex = std::fs::read_to_string("for_tests/westend1006001").unwrap();
+//! let meta = hex::decode(meta_hex.trim()).unwrap();
 //!
-//! // Full `RuntimeMetadataV14`, ready to use.
-//! let full_metadata = RuntimeMetadataV14::decode(&mut &meta[5..]).unwrap();
+//! // Full `RuntimeMetadataV15`, ready to use.
+//! let full_metadata = RuntimeMetadataV15::decode(&mut &meta[5..]).unwrap();
 //!
 //! let specs_westend = ShortSpecs {
 //!     base58prefix: 42,
@@ -296,7 +301,7 @@
 //!
 //! // Full metadata digest:
 //! let digest_full_metadata =
-//!     <RuntimeMetadataV14 as HashableMetadata<()>>::digest_with_short_specs(
+//!     <RuntimeMetadataV15 as HashableMetadata<()>>::digest_with_short_specs(
 //!         &full_metadata,
 //!         &specs_westend,
 //!         &mut (),
@@ -322,11 +327,47 @@
 //! # }
 //! ```
 //!
-
+//! # RuntimeMetadata versions support
+//!
+//! [`RuntimeMetadataV14`](https://docs.rs/frame-metadata/latest/frame_metadata/v14/struct.RuntimeMetadataV14.html)
+//! implements trait `AsMetadata` and could be used for transactions decoding.
+//!
+//! Trait `HashableMetadata` could be implemented for `RuntimeMetadataV14` (and,
+//! in fact, was, in earlier editions of this crate), but intentionally is not.
+//!
+//! The types registry of `RuntimeMetadataV14` has structure similar to that of
+//! `RuntimeMetadataV15`, however, the types in registries for same
+//! `spec_version` are different in `V14` and `V15`, with `RuntimeMetadataV14`
+//! having types not available in `RuntimeMetadataV15` and vise versa, thus
+//! making it not feasible to support both simultaneously during the
+//! transitioning phase.
+//!
+//! V15 and above are expected to be supported.
+//!
+//! # Available features
+//!
+//! - `merkle-standard`: for calculating `RuntimeMetadataV15` digest using tools
+//! of [`merkle_cbt`](https://docs.rs/merkle-cbt/latest/merkle_cbt/)
+//! crate. Intended for signature checking side. Digest is constant while
+//! metadata `spec_version` remains the same.
+//!
+//! - `merkle-lean`: for calculating `ShortMetadata` digest on cold signer side
+//! using tools of
+//! [`merkle_cbt_lean`](https://docs.rs/merkle-cbt-lean/latest/merkle_cbt_lean/)
+//! crate.
+//!
+//! - `proof-gen`: for generating `ShortMetadata` on wallet side, using tools of
+//! [`merkle_cbt_lean`](https://docs.rs/merkle-cbt-lean/latest/merkle_cbt_lean/)
+//! crate. `proof-gen` feature includes `merkle-lean`.
+//!
+//! - `std`
+//!
+//! By default, all features are made available.
+//!
 #![no_std]
 #![deny(unused_crate_dependencies)]
 
-pub mod cut_metadata;
+pub mod cutter;
 pub mod error;
 #[cfg(test)]
 #[cfg(any(feature = "merkle-standard", feature = "merkle-lean", test))]
@@ -342,10 +383,10 @@ extern crate std;
 extern crate alloc as std;
 
 #[cfg(feature = "merkle-lean")]
-pub use crate::cut_metadata::ShortMetadata;
+pub use crate::cutter::ShortMetadata;
 #[cfg(feature = "proof-gen")]
-pub use crate::cut_metadata::{cut_metadata, cut_metadata_transaction_unmarked};
-pub use crate::cut_metadata::{MetadataDescriptor, ShortRegistry};
+pub use crate::cutter::{cut_metadata, cut_metadata_transaction_unmarked};
+pub use crate::cutter::{MetadataDescriptor, ShortRegistry};
 
 pub use substrate_parser::{
     traits::{SignedExtensionMetadata, SpecNameVersion},
