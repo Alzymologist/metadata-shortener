@@ -10,7 +10,7 @@ use substrate_parser::{
 };
 
 use crate::{
-    cut_metadata::{cut_metadata, cut_metadata_transaction_unmarked, ShortMetadata},
+    cutter::{cut_metadata, cut_metadata_transaction_unmarked, ShortMetadata},
     traits::{Blake3Leaf, ExtendedMetadata, HashableMetadata},
 };
 

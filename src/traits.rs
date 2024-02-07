@@ -40,12 +40,10 @@ use substrate_parser::{
 };
 
 #[cfg(any(feature = "merkle-lean", feature = "merkle-standard", test))]
-use crate::cut_metadata::MetadataDescriptor;
+use crate::cutter::MetadataDescriptor;
 #[cfg(any(feature = "merkle-lean", test))]
-use crate::cut_metadata::ShortMetadata;
-use crate::cut_metadata::{
-    add_as_enum, add_ty_as_regular, DraftRegistry, LeavesRegistry, ShortRegistry,
-};
+use crate::cutter::ShortMetadata;
+use crate::cutter::{add_as_enum, add_ty_as_regular, DraftRegistry, LeavesRegistry, ShortRegistry};
 
 #[cfg(any(feature = "merkle-lean", feature = "merkle-standard", test))]
 use crate::error::MetaCutError;
@@ -53,10 +51,10 @@ use crate::error::MetaCutError;
 use crate::error::MetadataDescriptorError;
 use crate::error::RegistryCutError;
 
-/// Hash length.
+/// Hash length used throughout this crate.
 pub const LEN: usize = 32;
 
-/// Hasher. Specifies hash structure and merging.
+/// Hasher used throughout this crate. Specifies hash structure and merging.
 #[derive(Debug)]
 pub struct Blake3Hasher;
 
@@ -76,7 +74,8 @@ impl Hasher<LEN> for Blake3Hasher {
 #[cfg(any(feature = "merkle-lean", test))]
 pub type MerkleProofMetadata<L, E> = MerkleProof<LEN, L, E, Blake3Hasher>;
 
-/// Individual Merkle tree leaf.
+/// Example Merkle tree leaf. Length is set to [`LEN`], value is available
+/// without external memory access.
 #[derive(Copy, Clone, Debug, Decode, Encode, Eq, PartialEq)]
 pub struct Blake3Leaf([u8; LEN]);
 
@@ -170,7 +169,7 @@ where
     /// Extract [`ShortSpecs`].
     fn to_specs(&self) -> Result<ShortSpecs, <Self as AsMetadata<E>>::MetaStructureError>;
 
-    /// Calculate full digest. Digest is added to transaction before signing.
+    /// Calculate full digest.
     fn digest(&self, ext_memory: &mut E) -> Result<[u8; LEN], MetaCutError<E, Self>> {
         self.digest_with_short_specs(
             &self

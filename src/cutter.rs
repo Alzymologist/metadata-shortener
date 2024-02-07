@@ -79,7 +79,7 @@ pub enum EntryDetails {
     },
 }
 
-/// Shortened type registry, for use in [`ShortMetadata`].
+/// Shortened type registry, for use in `ShortMetadata`.
 ///
 /// Note that although its inner structure is identical to that of
 /// [`PortableRegistry`](scale_info::PortableRegistry), `ShortRegistry` has a

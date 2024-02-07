@@ -3,7 +3,7 @@ use frame_metadata::v15::RuntimeMetadataV15;
 
 #[cfg(all(feature = "std", feature = "merkle-standard", feature = "proof-gen"))]
 use metadata_shortener::{
-    cut_metadata::{cut_metadata_transaction_unmarked, ShortMetadata},
+    cutter::{cut_metadata_transaction_unmarked, ShortMetadata},
     traits::{Blake3Leaf, ExtendedMetadata, HashableMetadata},
 };
 
