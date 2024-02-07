@@ -230,7 +230,7 @@
 //! [`merkle_cbt`](https://docs.rs/merkle-cbt/latest/merkle_cbt/) and
 //! [`merkle_cbt_lean`](https://docs.rs/merkle-cbt-lean/latest/merkle_cbt_lean/)
 //! crates. While providing the same outcome, `merkle_cbt_lean` is tailored for
-//! `no_std` environments with low memory capacities.
+//! `no_std` environments with low internal memory capacity and external (streamed) data.
 //!
 //! Merkle leaves are blake3-hashed SCALE-encoded individual
 //! [`PortableType`](scale_info::PortableType) values. In enums the same `id` is
