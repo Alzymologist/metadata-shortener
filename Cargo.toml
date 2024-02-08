@@ -2,7 +2,7 @@
 description = "Reference implementation for metadata shortener for Substrate chains, RFC46"
 license = "GPL-3.0-or-later"
 name = "metadata-shortener"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Alexander Slesarev <slesarew@gmail.com>", "Vera Abramova <abramova.vera@gmail.com>"]
 edition = "2021"
 repository = "https://github.com/Alzymologist/metadata-shortener"
