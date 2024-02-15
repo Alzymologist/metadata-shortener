@@ -1,5 +1,5 @@
 # metadata-shortener
-Core functionality to shorten metadata and provide proving mechanism
+Core functionality to shorten substrate metadata and provide proving mechanism in accordance with [RFC0046](https://github.com/Alzymologist/RFCs/blob/metadata-for-offline-signers/text/0046-metadata-for-offline-signers.md)
 
 ## Supported metadata versions
 Supported are metadata version `RuntimeMetadataV15` and above.
