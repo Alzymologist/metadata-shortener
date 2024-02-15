@@ -16,7 +16,7 @@ blake3 = {version = "1.5.0", default-features = false, optional = true}
 external-memory-tools = {version = "0.1.1", default-features = false}
 frame-metadata = {version = "16.0.0", default-features = false, features = ["current", "decode"], optional = true}
 merkle-cbt = {version = "0.3.2", default-features = false, optional = true}
-merkle-cbt-lean = {version = "0.1.0", default-features = false, optional = true}
+merkle-cbt-lean = {version = "0.1.1", default-features = false, optional = true}
 parity-scale-codec = {version = "3.6.9", default-features = false, features = ["derive", "bit-vec"]}
 scale-info = {version = "2.10.0", default-features = false}
 substrate_parser = {version = "0.6.0", default-features = false}
@@ -26,7 +26,7 @@ blake3 = {version = "1.5.0", default-features = false}
 frame-metadata = {version = "16.0.0", default-features = false, features = ["current", "decode"]}
 hex = "0.4.3"
 merkle-cbt = {version = "0.3.2", default-features = false}
-merkle-cbt-lean = {version = "0.1.0", default-features = false, features = ["proof-gen"]}
+merkle-cbt-lean = {version = "0.1.1", default-features = false, features = ["proof-gen"]}
 primitive-types = "0.12.2"
 
 [features]
