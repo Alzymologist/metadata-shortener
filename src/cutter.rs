@@ -32,7 +32,7 @@ use substrate_parser::{
     cards::Info,
     compacts::get_compact,
     decoding_sci::{decode_type_def_primitive, pick_variant, BitVecPositions, ResolvedTy, Ty},
-    error::{ParserError, RegistryError, SignableError},
+    error::{ParserError, RegistryError, RegistryInternalError, SignableError},
     propagated::{Checker, Propagated, SpecialtySet},
     special_indicators::{Hint, SpecialtyTypeHinted, ENUM_INDEX_ENCODED_LEN},
     traits::{AsMetadata, ResolveType, SignedExtensionMetadata, SpecNameVersion},
@@ -680,7 +680,9 @@ where
         }
         TypeDef::Variant(x) => {
             propagated.reject_compact().map_err(|e| {
-                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(
+                    RegistryError::Internal(e),
+                )))
             })?;
             if !x.variants.is_empty() {
                 pass_variant::<B, E, M>(
@@ -729,7 +731,9 @@ where
         TypeDef::Tuple(x) => {
             if x.fields.len() > 1 {
                 propagated.reject_compact().map_err(|e| {
-                    MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                    MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(
+                        RegistryError::Internal(e),
+                    )))
                 })?;
                 propagated.forget_hint();
             }
@@ -748,7 +752,9 @@ where
                     position,
                     registry,
                     Propagated::for_ty(&propagated.checker, &ty, id).map_err(|e| {
-                        MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                        MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(
+                            RegistryError::Internal(e),
+                        )))
                     })?,
                     draft_registry,
                 )?;
@@ -768,11 +774,15 @@ where
         }
         TypeDef::Compact(x) => {
             propagated.reject_compact().map_err(|e| {
-                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(
+                    RegistryError::Internal(e),
+                )))
             })?;
             propagated.checker.specialty_set.compact_at = Some(id);
             propagated.checker.check_id(x.type_param.id).map_err(|e| {
-                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(
+                    RegistryError::Internal(e),
+                )))
             })?;
             pass_type::<B, E, M>(
                 &Ty::Symbol(&x.type_param),
@@ -787,7 +797,9 @@ where
         }
         TypeDef::BitSequence(x) => {
             propagated.reject_compact().map_err(|e| {
-                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(
+                    RegistryError::Internal(e),
+                )))
             })?;
             pass_type_def_bit_sequence::<B, E, M>(
                 x,
@@ -823,7 +835,9 @@ where
         // Note: compact flag was already checked in enum processing at this
         // point.
         checker.reject_compact().map_err(|e| {
-            MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+            MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(
+                RegistryError::Internal(e),
+            )))
         })?;
 
         // `Hint` remains relevant only if single-field struct is processed.
@@ -838,7 +852,9 @@ where
             position,
             registry,
             Propagated::for_field(&checker, field).map_err(|e| {
-                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(
+                    RegistryError::Internal(e),
+                )))
             })?,
             draft_registry,
         )?;
@@ -864,9 +880,11 @@ where
     E: ExternalMemory,
     M: AsMetadata<E>,
 {
-    propagated
-        .reject_compact()
-        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e))))?;
+    propagated.reject_compact().map_err(|e| {
+        MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(
+            RegistryError::Internal(e),
+        )))
+    })?;
 
     let husked = husk_type_no_info::<E, M>(
         element,
@@ -969,7 +987,9 @@ where
         TypeDef::Primitive(TypeDefPrimitive::U64) => {
             pass_bitvec_decode::<u64, B, E>(data, ext_memory, position)
         }
-        _ => Err(ParserError::Registry(RegistryError::NotBitStoreType { id })),
+        _ => Err(ParserError::Registry(RegistryError::Internal(
+            RegistryInternalError::NotBitStoreType { id },
+        ))),
     }
     .map_err(|e| MetaCutError::Signable(SignableError::Parsing(e)))?;
 
@@ -1023,9 +1043,11 @@ where
     M: AsMetadata<E>,
 {
     let entry_symbol_id = entry_symbol.id;
-    checker
-        .check_id(entry_symbol_id)
-        .map_err(|e| MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e))))?;
+    checker.check_id(entry_symbol_id).map_err(|e| {
+        MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(
+            RegistryError::Internal(e),
+        )))
+    })?;
     checker.specialty_set = SpecialtySet {
         compact_at: None,
         hint: Hint::None,
@@ -1045,7 +1067,9 @@ where
                         .map_err(MetaCutError::Registry)?;
                     id = x.fields[0].ty.id;
                     checker.check_id(id).map_err(|e| {
-                        MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                        MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(
+                            RegistryError::Internal(e),
+                        )))
                     })?;
                     ty = registry.resolve_ty(id, ext_memory).map_err(|e| {
                         MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
@@ -1061,12 +1085,16 @@ where
                 add_ty_as_regular(draft_registry, ty.to_owned(), id)
                     .map_err(MetaCutError::Registry)?;
                 checker.reject_compact().map_err(|e| {
-                    MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                    MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(
+                        RegistryError::Internal(e),
+                    )))
                 })?;
                 checker.specialty_set.compact_at = Some(id);
                 id = x.type_param.id;
                 checker.check_id(id).map_err(|e| {
-                    MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
+                    MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(
+                        RegistryError::Internal(e),
+                    )))
                 })?;
                 ty = registry.resolve_ty(id, ext_memory).map_err(|e| {
                     MetaCutError::Signable(SignableError::Parsing(ParserError::Registry(e)))
