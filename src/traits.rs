@@ -32,11 +32,14 @@ use scale_info::{form::PortableForm, PortableRegistry, Type, TypeDef};
 
 #[cfg(any(feature = "merkle-lean", test))]
 use substrate_parser::traits::{SignedExtensionMetadata, SpecNameVersion};
-use substrate_parser::{error::RegistryError, traits::ResolveType};
 #[cfg(any(feature = "merkle-lean", feature = "merkle-standard", test))]
 use substrate_parser::{
     error::SignableError, parse_transaction, parse_transaction_unmarked, traits::AsMetadata,
     ShortSpecs, TransactionParsed, TransactionUnmarkedParsed,
+};
+use substrate_parser::{
+    error::{RegistryError, RegistryInternalError},
+    traits::ResolveType,
 };
 
 #[cfg(any(feature = "merkle-lean", feature = "merkle-standard", test))]
@@ -286,13 +289,15 @@ impl<E: ExternalMemory> ResolveType<E> for ShortRegistry {
         &self,
         id: u32,
         _ext_memory: &mut E,
-    ) -> Result<Type<PortableForm>, RegistryError> {
+    ) -> Result<Type<PortableForm>, RegistryError<E>> {
         for short_registry_entry in self.types.iter() {
             if short_registry_entry.id == id {
                 return Ok(short_registry_entry.ty.to_owned());
             }
         }
-        Err(RegistryError::TypeNotResolved { id })
+        Err(RegistryError::Internal(
+            RegistryInternalError::TypeNotResolved { id },
+        ))
     }
 }
 

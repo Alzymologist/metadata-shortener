@@ -19,7 +19,8 @@ merkle-cbt = {version = "0.3.2", default-features = false, optional = true}
 merkle-cbt-lean = {version = "0.1.1", default-features = false, optional = true}
 parity-scale-codec = {version = "3.6.9", default-features = false, features = ["derive", "bit-vec"]}
 scale-info = {version = "2.10.0", default-features = false}
-substrate_parser = {version = "0.6.0", default-features = false}
+#substrate_parser = {version = "0.6.0", default-features = false}
+substrate_parser = {git = "https://github.com/Alzymologist/substrate-parser", default-features = false, rev = "65de6a4fe207a64f9857247af4e9f7509fa6de4f"}
 
 [dev-dependencies]
 blake3 = {version = "1.5.0", default-features = false}
