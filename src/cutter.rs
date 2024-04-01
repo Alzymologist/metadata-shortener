@@ -42,7 +42,7 @@ use substrate_parser::{
 use crate::error::{MetaCutError, RegistryCutError};
 
 #[cfg(any(feature = "proof-gen", test))]
-use crate::traits::{Blake3Hasher, HashableMetadata, HashableRegistry, MerkleProofMetadata};
+use crate::traits::{Blake3Hasher, HashableRegistry, MerkleProofMetadata};
 
 #[cfg(any(feature = "merkle-lean", test))]
 use crate::traits::LEN;
@@ -495,8 +495,8 @@ where
     B: AddressableBuffer<E>,
     E: ExternalMemory,
     L: Leaf<LEN, E>,
-    M: HashableMetadata<E>,
-    <M as AsMetadata<E>>::TypeRegistry: HashableRegistry<E>,
+    M: AsMetadata<E>,
+    M::TypeRegistry: HashableRegistry<E>,
 {
     let mut draft_registry = DraftRegistry::new();
 
@@ -568,8 +568,8 @@ where
     B: AddressableBuffer<E>,
     E: ExternalMemory,
     L: Leaf<LEN, E>,
-    M: HashableMetadata<E>,
-    <M as AsMetadata<E>>::TypeRegistry: HashableRegistry<E>,
+    M: AsMetadata<E>,
+    M::TypeRegistry: HashableRegistry<E>,
 {
     let mut draft_registry = DraftRegistry::new();
 
